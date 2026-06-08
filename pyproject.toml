@@ -4,4 +4,10 @@ version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "bioread>=2025.5.2",
+    "ipykernel>=7.2.0",
+    "matplotlib>=3.10.9",
+    "neurokit2>=0.2.13",
+    "pandas>=2.3.3",
+]

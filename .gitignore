@@ -10,4 +10,5 @@ wheels/
 .venv
 
 # Data Folder
-data
+input/**
+!input/.gitkeep
