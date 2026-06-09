@@ -11,4 +11,8 @@ wheels/
 
 # Data Folder
 input/**
+prepared_data/**
+
+# keep gitkeep files
 !input/.gitkeep
+!prepared_data/.gitkeep
