@@ -29,6 +29,44 @@ def get_matched_mask(trigger_map):
     return pd.concat(masks, axis=1).any(axis=1)
 
 
+def get_run_boundaries(mask, fs=2000):
+    """
+    Given a True/False series, find each consecutive block of True values
+    and return their start index, end index, and duration.
+
+    This is a generic helper used to detect both trial periods (when a
+    trigger is active) and unknown pin combination periods.
+
+    Parameters
+    ----------
+    mask : True/False series over the recording timeline
+    fs   : the number of samples recorded per second (default 2000)
+
+    Returns
+    -------
+    A table with one row per block showing:
+        onset            : sample index where the block starts
+        offset           : sample index where the block ends
+        duration_samples : how many samples the block contained
+        duration_s       : how many seconds the block lasted
+    """
+    if mask.sum() == 0:
+        return pd.DataFrame(columns=["onset", "offset", "duration_samples", "duration_s"])
+
+    block_started = mask & ~mask.shift(1,  fill_value=False)
+    block_ended   = mask & ~mask.shift(-1, fill_value=False)
+    onsets  = mask.index[block_started]
+    offsets = mask.index[block_ended]
+    lengths = offsets - onsets + 1
+
+    return pd.DataFrame({
+        "onset":            onsets,
+        "offset":           offsets,
+        "duration_samples": lengths,
+        "duration_s":       (lengths / fs).round(3),
+    })
+
+
 def summarize_triggers(trigger_map, fs=2000):
     """
     For each trigger condition, count how many samples and trials exist
@@ -81,57 +119,44 @@ def summarize_triggers(trigger_map, fs=2000):
 def summarize_data(df, trigger_cols, trigger_map, fs=2000):
     """
     Give an overview of what every row in the recording actually contains.
+    This function splits every row into exactly one of three buckets:
 
-    At 2000 Hz, most rows in the dataframe are not stimulus events :
-    they are either silent (all pins off) or carry some pin combination
-    that does not match any of the 16 known triggers. This function
-    splits every row into exactly one of three buckets:
+        matched           : the row belongs to a known trigger condition
+        baseline          : all 8 pin columns are zero (no signal at all)
+        unknown pin combo : some pins are on, but the combination does not
+                            match any trigger in the codebook
 
-        matched   : the row belongs to a known trigger condition
-        baseline  : all 8 pin columns are zero (no signal at all)
-        unknown   : some pins are on, but the combination does not match
-                    any trigger in the codebook
-
-    If unknown rows exist, their pin combinations are printed so you can
-    investigate what they represent.
-
-    Parameters
-    ----------
-    df           : the full dataframe with the 8 binarized pin columns
-    trigger_cols : the list of 8 column names representing the parallel port pins
-    trigger_map  : a dictionary where each key is a trigger number and each
-                   value is a True/False series marking which rows belong to it
-    fs           : the number of samples recorded per second (default 2000)
+    If unknown pin combos exist, their pin combinations are printed so
+    you can investigate what they represent.
     """
     total = len(df)
 
-    matched  = get_matched_mask(trigger_map)
-    baseline = (df[trigger_cols] == 0).all(axis=1)
-    unknown  = ~matched & ~baseline
+    matched           = get_matched_mask(trigger_map)
+    baseline          = (df[trigger_cols] == 0).all(axis=1)
+    unknown_pin_combo = ~matched & ~baseline
 
-    n_matched  = matched.sum()
-    n_baseline = baseline.sum()
-    n_unknown  = unknown.sum()
+    n_matched           = matched.sum()
+    n_baseline          = baseline.sum()
+    n_unknown_pin_combo = unknown_pin_combo.sum()
 
     def fmt(n):
         return f"{n:10,}  ({100*n/total:5.1f}%)  ~{n/(fs*60):5.2f} min"
 
-    print(f"Total rows      : {total:,} (~{total/(fs*60):.2f} min @ {fs}Hz)")
-    print("-" * 55)
-    print(f"Matched         : {fmt(n_matched)}")
-    print(f"Baseline (zeros): {fmt(n_baseline)}")
-    print(f"Unknown combos  : {fmt(n_unknown)}")
-    print("-" * 55)
-    assert n_matched + n_baseline + n_unknown == total, "rows don't add up!"
+    print(f"Total rows         : {total:,} (~{total/(fs*60):.2f} min @ {fs}Hz)")
+    print("-" * 58)
+    print(f"Matched            : {fmt(n_matched)}")
+    print(f"Baseline (zeros)   : {fmt(n_baseline)}")
+    print(f"Unknown pin combos : {fmt(n_unknown_pin_combo)}")
+    print("-" * 58)
+    assert n_matched + n_baseline + n_unknown_pin_combo == total, "rows don't add up!"
 
-    if n_unknown > 0:
-        print("\nPer unknown combination:")
-        top = df[unknown][trigger_cols].value_counts().reset_index()
+    if n_unknown_pin_combo > 0:
+        print("\nPer unknown pin combination:")
+        top = df[unknown_pin_combo][trigger_cols].value_counts().reset_index()
         top['duration_min'] = (top['count'] / (fs * 60)).round(2)
         top['pct']          = (100 * top['count'] / total).round(1)
         top = top.drop(columns='count')
         print(top.to_string(index=False))
-
 
 
 def get_trial_boundaries(trigger_map, fs=2000):
@@ -142,40 +167,26 @@ def get_trial_boundaries(trigger_map, fs=2000):
     This gives you a row-per-trial event log of the entire session, which
     is the starting point for epoching the EDA signal later.
 
-    Parameters
-    ----------
-    trigger_map : a dictionary where each key is a trigger number and each
-                  value is a True/False series marking which rows belong to it
-    fs          : the number of samples recorded per second (default 2000)
-
     Returns
     -------
     A table with one row per trial showing:
-        trigger          — which condition this trial belongs to
-        onset            — the sample index where the trial starts
-        offset           — the sample index where the trial ends
-        duration_samples — how many samples the trial lasted
-        duration_s       — how many seconds the trial lasted
+        trigger          : which condition this trial belongs to
+        onset            : the sample index where the trial starts
+        offset           : the sample index where the trial ends
+        duration_samples : how many samples the trial lasted
+        duration_s       : how many seconds the trial lasted
     """
-    rows = []
-
+    all_boundaries = []
     for trig_id, mask in trigger_map.items():
-        if mask.sum() == 0:
+        b = get_run_boundaries(mask, fs)
+        if b.empty:
             continue
+        b["trigger"] = trig_id
+        all_boundaries.append(b)
 
-        trial_started = mask & ~mask.shift(1,  fill_value=False)
-        trial_ended   = mask & ~mask.shift(-1, fill_value=False)
-        onsets  = mask.index[trial_started]
-        offsets = mask.index[trial_ended]
-        lengths = offsets - onsets + 1
+    if not all_boundaries:
+        return pd.DataFrame(columns=["trigger", "onset", "offset",
+                                     "duration_samples", "duration_s"])
 
-        for onset, offset, length in zip(onsets, offsets, lengths):
-            rows.append({
-                "trigger":          trig_id,
-                "onset":            onset,
-                "offset":           offset,
-                "duration_samples": length,
-                "duration_s":       round(length / fs, 3),
-            })
-
-    return pd.DataFrame(rows).sort_values("onset").reset_index(drop=True)
+    result = pd.concat(all_boundaries).sort_values("onset").reset_index(drop=True)
+    return result[["trigger", "onset", "offset", "duration_samples", "duration_s"]]
