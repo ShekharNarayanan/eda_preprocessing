@@ -10,4 +10,6 @@ dependencies = [
     "matplotlib>=3.10.9",
     "neurokit2>=0.2.13",
     "pandas>=2.3.3",
+    "pyarrow>=24.0.0",
+    "pyyaml>=6.0.3",
 ]
