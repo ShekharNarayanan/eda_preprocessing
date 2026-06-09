@@ -1,5 +1,3 @@
-
-
 def create_trigger_map_odd(df):
     
     # redefine masks with clean binary comparisons
