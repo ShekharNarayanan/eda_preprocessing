@@ -147,8 +147,8 @@ After running `prepare_data.py`, the cleaned parquet files in `PREPARED_DIR` are
 ### 4.1 Clone the repository
 
 ```bash
-git clone <repository-url>
-cd <repository-folder>
+git clone https://github.com/ShekharNarayanan/eda_preprocessing.git
+cd eda_preprocessing
 ```
 
 ### 4.2 Install dependencies
@@ -169,10 +169,12 @@ Main dependencies:
 
 ### 4.3 Run the pipeline
 
+**1. Data Preparation**
 Place your raw `.acq` files in the folder named in `config.yaml` under `INPUT_DIR`, then run:
 
 ```bash
-uv run python prepare_data.py
+.venv\Scripts\activate
+python -m prepare_data
 ```
 
 The script loops through every `.acq` file in the input folder, figures out whether the participant is odd or even based on the participant ID in the filename, applies the correct codebook, builds the clean dataset, and writes a parquet file per participant to `PREPARED_DIR`.
