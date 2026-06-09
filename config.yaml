@@ -1,0 +1,28 @@
+# config.py
+
+# Data paths
+INPUT_DIR  : 'input'
+PREPARED_DIR: 'prepared_data'
+OUTPUT_DIR : 'output'
+
+# Recording
+SAMPLING_RATE : 2000  # Hz
+
+# Trigger columns
+TRIGGER_COLS : [
+    "OT_Only",
+    "OT_Type",
+    "Living_Word",
+    "Nonliving_Pseudoword",
+    "PM_Delayed",
+    "PM_Active",
+    "PM",
+    "Lure",
+]
+
+# EDA parameters
+EDA_LOWPASS_HZ          : 1.0  # low-pass filter cutoff in Hz
+EDA_DOWNSAMPLE          : 50   # target sampling rate after downsampling (Hz)
+SCR_DETECTION_THRESHOLD : 0.03 # micro siemens
+
+# ECG parameters
