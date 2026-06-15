@@ -8,8 +8,6 @@ import src.trigger_utils as trigger_utils
 import src.clean_data as clean_data
 
 # Load the config file from the same folder as this script.
-# Config holds paths, sampling rate, trigger column names, and EDA/ECG
-# parameters that will be used throughout the pipeline.
 root        = Path(__file__).parent
 config_path = root / "config.yaml"
 
@@ -23,9 +21,14 @@ prepared_dir.mkdir(parents=True, exist_ok=True)
 # Find every .acq recording in the input folder.
 acq_files = io.get_acq_files(config["INPUT_DIR"])
 
+# Collectors for the cross-participant Excel report.
+# summary_rows        : one row per participant
+# unknown_combo_tables: one per-participant breakdown table, concatenated later
+summary_rows         = []
+unknown_combo_tables = []
 
 # Process each participant one at a time.
-for path in acq_files:
+for path in acq_files[:6]:
 
     # The participant ID is encoded in the filename. Even and odd IDs
     # belong to different experimental versions (A and B) with different
@@ -51,17 +54,14 @@ for path in acq_files:
     )
 
     # Pick the correct trigger codebook based on whether the participant
-    # is even or odd. Each codebook maps a unique 8-pin combination to a
-    # single trigger ID.
+    # is even or odd.
     trigger_map = (
         trigger_utils.create_trigger_map_even(df)
         if even
         else trigger_utils.create_trigger_map_odd(df)
     )
 
-    # Collapse the 8 pin columns into one 'trigger' column where each row
-    # is labelled with the active trigger ID, 0 for baseline, or -1 for
-    # any pin combination not in the codebook (to be excluded later).
+    # Collapse the 8 pin columns into one 'trigger' column.
     clean_df, report, unknown_pin_combos = clean_data.build_clean_dataset(
         df           = df,
         trigger_cols = config["TRIGGER_COLS"],
@@ -69,8 +69,6 @@ for path in acq_files:
         fs           = config["SAMPLING_RATE"],
     )
 
-    # Print a quick summary so we can immediately spot if a recording has
-    # too many unknown pin combos or an unusual baseline ratio.
     print(
         f"Participant {participant_id}: "
         f"matched {report['matched_pct']}%, "
@@ -79,8 +77,38 @@ for path in acq_files:
         f"({report['unknown_pin_combo_periods']} periods)"
     )
 
-    # Save the cleaned dataframe as parquet (much faster and smaller than
-    # CSV for multi-million-row physiological data, and preserves dtypes).
+    # Collect the summary row for the report sheet.
+    summary_rows.append({
+        'participant_id':            participant_id,
+        'version':                   'even' if even else 'odd',
+        'total_duration_min':        report['total_duration_min'],
+        'matched_pct':               report['matched_pct'],
+        'baseline_pct':              report['baseline_pct'],
+        'unknown_pin_combo_pct':     report['unknown_pin_combo_pct'],
+        'unknown_pin_combo_periods': report['unknown_pin_combo_periods'],
+    })
+
+    # Collect the breakdown of unmatched pin combinations for this participant.
+    breakdown = clean_data.get_unknown_pin_combos_breakdown(
+        df, config["TRIGGER_COLS"], trigger_map, fs=config["SAMPLING_RATE"],
+    )
+    if not breakdown.empty:
+        breakdown.insert(0, 'participant_id', participant_id)
+        unknown_combo_tables.append(breakdown)
+
+    # Save the cleaned dataframe as parquet.
     out_path = prepared_dir / f"clean_{participant_id}.parquet"
     clean_df.to_parquet(out_path)
     print(f"Saved -> {out_path}")
+
+
+# After processing all participants, write the cross-participant Excel report.
+report_path = prepared_dir / "report.xlsx"
+with pd.ExcelWriter(report_path) as writer:
+    pd.DataFrame(summary_rows).to_excel(writer, sheet_name="summary", index=False)
+    if unknown_combo_tables:
+        pd.concat(unknown_combo_tables, ignore_index=True).to_excel(
+            writer, sheet_name="unknown_pin_combos", index=False
+        )
+
+print(f"\nReport saved -> {report_path}")
