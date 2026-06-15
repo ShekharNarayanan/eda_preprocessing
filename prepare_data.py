@@ -31,7 +31,7 @@ trigger_summary_tables  = []
 
 
 # Process each participant one at a time.
-for path in acq_files[:6]:
+for path in acq_files:
 
     # The participant ID is encoded in the filename. Even and odd IDs
     # belong to different experimental versions (A and B) with different
