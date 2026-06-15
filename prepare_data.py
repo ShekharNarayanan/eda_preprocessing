@@ -25,7 +25,7 @@ acq_files = io.get_acq_files(config["INPUT_DIR"])
 
 
 # Process each participant one at a time.
-for path in acq_files[:2]:
+for path in acq_files:
 
     # The participant ID is encoded in the filename. Even and odd IDs
     # belong to different experimental versions (A and B) with different
