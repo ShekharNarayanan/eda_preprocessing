@@ -6,6 +6,7 @@ from pathlib import Path
 import src.io as io
 import src.trigger_utils as trigger_utils
 import src.clean_data as clean_data
+import src.inspect_data as inspect_data
 
 # Load the config file from the same folder as this script.
 root        = Path(__file__).parent
@@ -24,8 +25,10 @@ acq_files = io.get_acq_files(config["INPUT_DIR"])
 # Collectors for the cross-participant Excel report.
 # summary_rows        : one row per participant
 # unknown_combo_tables: one per-participant breakdown table, concatenated later
-summary_rows         = []
-unknown_combo_tables = []
+summary_rows            = []
+unknown_combo_tables    = []
+trigger_summary_tables  = []
+
 
 # Process each participant one at a time.
 for path in acq_files[:6]:
@@ -60,6 +63,12 @@ for path in acq_files[:6]:
         if even
         else trigger_utils.create_trigger_map_odd(df)
     )
+
+    # get trigger summary
+    trigger_summary = inspect_data.summarize_triggers(trigger_map, fs=config["SAMPLING_RATE"])
+    trigger_summary.insert(0, 'participant_id', participant_id)
+    trigger_summary_tables.append(trigger_summary)
+
 
     # Collapse the 8 pin columns into one 'trigger' column.
     clean_df, report, unknown_pin_combos = clean_data.build_clean_dataset(
@@ -104,11 +113,29 @@ for path in acq_files[:6]:
 
 # After processing all participants, write the cross-participant Excel report.
 report_path = prepared_dir / "report.xlsx"
+
+# After processing all participants, write the cross-participant Excel report.
+report_path = prepared_dir / "report.xlsx"
 with pd.ExcelWriter(report_path) as writer:
-    pd.DataFrame(summary_rows).to_excel(writer, sheet_name="summary", index=False)
+    
+    # 1. Summary sheet (Sorted from lowest to highest participant ID)
+    pd.DataFrame(summary_rows).sort_values('participant_id').set_index('participant_id').to_excel(
+        writer, sheet_name="summary", index=True
+    )
+    
+    # 2. Trigger Summary sheet (Sorted)
+    if trigger_summary_tables:
+        pd.concat(trigger_summary_tables, ignore_index=True).sort_values('participant_id').set_index('participant_id').to_excel(
+            writer, sheet_name="trigger_summary", index=True
+        )
+    
+    # 3. Unknown Pin Combos sheet (Sorted)
     if unknown_combo_tables:
-        pd.concat(unknown_combo_tables, ignore_index=True).to_excel(
-            writer, sheet_name="unknown_pin_combos", index=False
+        pd.concat(unknown_combo_tables, ignore_index=True).sort_values('participant_id').set_index('participant_id').to_excel(
+            writer, sheet_name="unknown_pin_combos", index=True
         )
 
 print(f"\nReport saved -> {report_path}")
+
+
+
