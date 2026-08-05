@@ -31,18 +31,16 @@ trigger_summary_tables  = []
 
 
 # Process each participant one at a time.
-for path in acq_files[:10]:
+for path in acq_files:
     # The participant ID is encoded in the filename. Even and odd IDs
     # belong to different experimental versions (A and B) with different
     # trigger codebooks, so we need to know which one we're dealing with.
     participant_id = io.get_participant_id(path)
 
-    # if participant_id not in [138, 222,226]:
-    #     continue
-
     # if participant_id in [138, 222,226]:  
-    even           = False if participant_id == 142 else participant_id % 2 == 0 # participant 142 has odd trigger mapping
-        # participant_id = f'{participant_id}_2'
+    participant_number = int(str(participant_id).split("_")[0])    
+    even = False if participant_number == 142 else participant_number % 2 == 0 # participant 142 has odd trigger mapping
+
 
     print(f"\nLoading participant {participant_id} ({'even' if even else 'odd'})...")
 
