@@ -1,70 +1,8 @@
 import pandas as pd
+from trigger_utils import get_matched_mask
+from trial_boundaries import get_trial_run_lengths
 
 
-def get_trial_run_lengths(mask):
-    """
-    Given a True/False series marking which samples belong to a trigger,
-    find each separate block of True values and return how many samples
-    each block contains.
-
-    For example, if the mask looks like:
-        [F, F, T, T, T, F, F, T, T, F]
-    this returns [3, 2] : one block of 3 samples and one block of 2.
-
-    Each block corresponds to one trial of that trigger condition.
-    """
-    trial_started = mask & ~mask.shift(1, fill_value=False)
-    trial_id      = trial_started.cumsum()
-    trial_lengths = mask.groupby(trial_id).sum()
-    return trial_lengths
-
-
-def get_matched_mask(trigger_map):
-    """
-    Given all the trigger masks, return a single True/False series
-    that is True for any row that belongs to at least one trigger condition,
-    and False for every other row.
-    """
-    masks = list(trigger_map.values())
-    return pd.concat(masks, axis=1).any(axis=1)
-
-
-def get_run_boundaries(mask, fs=2000):
-    """
-    Given a True/False series, find each consecutive block of True values
-    and return their start index, end index, and duration.
-
-    This is a generic helper used to detect both trial periods (when a
-    trigger is active) and unknown pin combination periods.
-
-    Parameters
-    ----------
-    mask : True/False series over the recording timeline
-    fs   : the number of samples recorded per second (default 2000)
-
-    Returns
-    -------
-    A table with one row per block showing:
-        onset            : sample index where the block starts
-        offset           : sample index where the block ends
-        duration_samples : how many samples the block contained
-        duration_s       : how many seconds the block lasted
-    """
-    if mask.sum() == 0:
-        return pd.DataFrame(columns=["onset", "offset", "duration_samples", "duration_s"])
-
-    block_started = mask & ~mask.shift(1,  fill_value=False)
-    block_ended   = mask & ~mask.shift(-1, fill_value=False)
-    onsets  = mask.index[block_started]
-    offsets = mask.index[block_ended]
-    lengths = offsets - onsets + 1
-
-    return pd.DataFrame({
-        "onset":            onsets,
-        "offset":           offsets,
-        "duration_samples": lengths,
-        "duration_s":       (lengths / fs).round(3),
-    })
 
 
 def summarize_triggers(trigger_map, fs=2000):
@@ -159,34 +97,43 @@ def summarize_data(df, trigger_cols, trigger_map, fs=2000):
         print(top.to_string(index=False))
 
 
-def get_trial_boundaries(trigger_map, fs=2000):
+
+
+def summarize_unknown_spans(unknown_spans, fs=2000):
     """
-    For each trigger, find the exact start and end of every individual trial
-    in the recording and return them as a single table sorted by time.
-
-    This gives you a row-per-trial event log of the entire session, which
-    is the starting point for epoching the EDA signal later.
-
+    Turn one participant's table of unknown pin combo periods into a single
+    row of summary numbers.
+ 
+    The two timing numbers, first_onset_min and last_offset_min, bracket the
+    part of the recording where unknown periods occur. If both are small the
+    unknown periods sit at the start of the recording. If last_offset_min is
+    close to the end of the recording they are spread throughout.
+ 
+    Parameters
+    ----------
+    unknown_spans : the boundaries table for one participant, with one row
+                    per unknown pin combo period
+    fs            : sampling rate in Hz (default 2000)
+ 
     Returns
     -------
-    A table with one row per trial showing:
-        trigger          : which condition this trial belongs to
-        onset            : the sample index where the trial starts
-        offset           : the sample index where the trial ends
-        duration_samples : how many samples the trial lasted
-        duration_s       : how many seconds the trial lasted
+    A dictionary with one entry per summary number.
     """
-    all_boundaries = []
-    for trig_id, mask in trigger_map.items():
-        b = get_run_boundaries(mask, fs)
-        if b.empty:
-            continue
-        b["trigger"] = trig_id
-        all_boundaries.append(b)
-
-    if not all_boundaries:
-        return pd.DataFrame(columns=["trigger", "onset", "offset",
-                                     "duration_samples", "duration_s"])
-
-    result = pd.concat(all_boundaries).sort_values("onset").reset_index(drop=True)
-    return result[["trigger", "onset", "offset", "duration_samples", "duration_s"]]
+    if unknown_spans.empty:
+        return {
+            "n_spans":           0,
+            "first_onset_min":   None,
+            "last_offset_min":   None,
+            "total_unknown_min": 0.0,
+            "longest_span_s":    0.0,
+        }
+ 
+    total_samples = unknown_spans["duration_samples"].sum()
+ 
+    return {
+        "n_spans":           len(unknown_spans),
+        "first_onset_min":   round(unknown_spans["onset"].min()  / (fs * 60), 2),
+        "last_offset_min":   round(unknown_spans["offset"].max() / (fs * 60), 2),
+        "total_unknown_min": round(total_samples / (fs * 60), 2),
+        "longest_span_s":    round(unknown_spans["duration_s"].max(), 2),
+    }
