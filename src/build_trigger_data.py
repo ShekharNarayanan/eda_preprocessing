@@ -1,6 +1,6 @@
 import pandas as pd
-from src.summarize_data import get_matched_mask, get_run_boundaries
-
+from src.trigger_codebook import get_matched_mask
+from src.trial_boundaries import get_run_boundaries
 
 def get_unknown_pin_combo_mask(df, trigger_cols, trigger_map):
     """

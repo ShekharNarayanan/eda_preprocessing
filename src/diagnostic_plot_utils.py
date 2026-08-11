@@ -1,0 +1,117 @@
+import matplotlib.pyplot as plt
+
+
+def get_span_bars(spans, fs=2000, min_bar_min=0.1):
+    """
+    Convert one participant's periods into the (start, width) pairs that
+    matplotlib needs to draw horizontal bars on a timeline.
+
+    Both numbers are in minutes. Very short periods are widened to
+    min_bar_min so that they stay visible on an hour long axis. This means
+    the width of a short bar is not a faithful picture of its duration, so
+    exact durations should be read from the summary table rather than from
+    the plot.
+
+    Parameters
+    ----------
+    spans       : a boundaries table for one participant, with one row per
+                  period and columns onset and duration_samples
+    fs          : sampling rate in Hz (default 2000)
+    min_bar_min : smallest bar width to draw, in minutes
+
+    Returns
+    -------
+    A list of (start_min, width_min) pairs, one per period.
+    """
+    bars = []
+
+    for row in spans.itertuples():
+        start_min = row.onset / (fs * 60)
+        width_min = row.duration_samples / (fs * 60)
+
+        if width_min < min_bar_min:
+            width_min = min_bar_min
+
+        bars.append((start_min, width_min))
+
+    return bars
+
+
+def plot_unknown_timeline(bars_per_participant, recording_length_min,
+                          participants_per_figure=25, min_bar_min=0.1,
+                          bar_colour="#D85A30"):
+    """
+    Draw one horizontal timeline row per participant showing when unknown
+    pin combo periods happened and roughly how long they lasted.
+
+    Every row uses the same x axis so that positions can be compared across
+    participants. If there are more participants than participants_per_figure
+    they are split across several figures, which keeps each figure a readable
+    height instead of producing one very tall image.
+
+    Parameters
+    ----------
+    bars_per_participant    : dictionary of participant ID to the list of
+                              (start_min, width_min) pairs for that participant
+    recording_length_min    : how long the x axis should be, in minutes
+    participants_per_figure : how many rows to draw on one figure
+    min_bar_min             : the bar width floor that was used when the bars
+                              were built. It is only used for the note printed
+                              under the axis, so pass the same value that was
+                              given to get_span_bars, otherwise the note will
+                              not describe what was actually drawn.
+    bar_colour              : colour of the bars
+
+    Returns
+    -------
+    A list of matplotlib figures, one per page of participants.
+    """
+    participant_ids = list(bars_per_participant.keys())
+    figures         = []
+
+    # Split the participants into pages so that no single figure gets too tall.
+    for page_start in range(0, len(participant_ids), participants_per_figure):
+        page_ids = participant_ids[page_start:page_start + participants_per_figure]
+
+        # The height of the figure grows with the number of rows on this page.
+        fig_height = 1.5 + 0.3 * len(page_ids)
+        fig, ax    = plt.subplots(figsize=(11, fig_height))
+
+        # Rows are drawn from the top down, so the first participant on the
+        # page gets the highest y position.
+        for row_number, participant_id in enumerate(page_ids):
+            bars       = bars_per_participant[participant_id]
+            y_position = len(page_ids) - row_number - 1
+
+            if not bars:
+                ax.text(recording_length_min / 2, y_position, "no unknown spans",
+                        ha="center", va="center", fontsize=8, color="grey")
+                continue
+
+            ax.broken_barh(bars, (y_position - 0.35, 0.7),
+                           facecolors=bar_colour, edgecolors="none")
+
+        ax.set_yticks(range(len(page_ids)))
+        ax.set_yticklabels(list(reversed(page_ids)), fontsize=9)
+        ax.set_ylim(-0.7, len(page_ids) - 0.3)
+
+        ax.set_xlim(0, recording_length_min)
+        ax.set_xlabel("minutes into recording")
+        ax.grid(axis="x", linestyle=":", linewidth=0.5, alpha=0.6)
+        ax.set_axisbelow(True)
+
+        page_number = page_start // participants_per_figure + 1
+        total_pages = (len(participant_ids) - 1) // participants_per_figure + 1
+
+        title = "Unknown pin combo periods"
+        if total_pages > 1:
+            title = f"{title} (page {page_number} of {total_pages})"
+        ax.set_title(title, fontsize=11, loc="left")
+
+        note = f"bars narrower than {min_bar_min} min are drawn at that width"
+        fig.text(0.01, 0.01, note, fontsize=7, color="grey")
+
+        fig.tight_layout()
+        figures.append(fig)
+
+    return figures

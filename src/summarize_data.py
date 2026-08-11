@@ -1,8 +1,7 @@
 import pandas as pd
-from trigger_utils import get_matched_mask
-from trial_boundaries import get_trial_run_lengths
-from clean_data import get_unknown_pin_combo_mask
-
+from src.trigger_codebook import get_matched_mask
+from src.trial_boundaries import get_trial_run_lengths
+from src.build_trigger_data import get_unknown_pin_combo_mask
 
 
 def summarize_triggers(trigger_map, fs=2000):
