@@ -1,3 +1,4 @@
+import pandas as pd
 def create_trigger_map_odd(df):
     
     # redefine masks with clean binary comparisons
@@ -366,131 +367,11 @@ def create_trigger_map_even(df):
 
     return trigger_map
 
-# import pandas as pd
-
-# # The order of columns in this list matters.
-# # It must match the order of the values in each codebook entry below.
-# TRIGGER_COLS = [
-#     "OT_Only",
-#     "OT_Type",
-#     "Living_Word",
-#     "Nonliving_Pseudoword",
-#     "PM_Delayed",
-#     "PM_Active",
-#     "PM",
-#     "Lure",
-# ]
-
-# # Codebook for ODD participants (Version A).
-# # Each entry is: trigger_id -> tuple of 8 pin values (0 or 1)
-# # in the same order as TRIGGER_COLS above.
-# #                OT_Only OT_Type Living Nonliving PM_Del PM_Act PM Lure
-# CODEBOOK_ODD = {
-#     145:        ( 1,      1,      1,     0,        0,     0,     0, 0),
-#     146:        ( 1,      1,      0,     1,        0,     0,     0, 0),
-#     129:        ( 1,      0,      1,     0,        0,     0,     0, 0),
-#     130:        ( 1,      0,      0,     1,        0,     0,     0, 0),
-#     49:         ( 0,      1,      1,     0,        1,     0,     0, 0),
-#     50:         ( 0,      1,      0,     1,        1,     0,     0, 0),
-#     52:         ( 0,      1,      0,     0,        1,     0,     1, 0),
-#     56:         ( 0,      1,      0,     0,        1,     0,     0, 1),
-#     65:         ( 0,      0,      1,     0,        0,     1,     0, 0),
-#     66:         ( 0,      0,      0,     1,        0,     1,     0, 0),
-#     68:         ( 0,      0,      0,     0,        0,     1,     1, 0),
-#     72:         ( 0,      0,      0,     0,        0,     1,     0, 1),
-#     17:         ( 0,      1,      1,     0,        0,     0,     0, 0),
-#     18:         ( 0,      1,      0,     1,        0,     0,     0, 0),
-#     1:          ( 0,      0,      1,     0,        0,     0,     0, 0),
-#     2:          ( 0,      0,      0,     1,        0,     0,     0, 0),
-# }
-
-# # Codebook for EVEN participants (Version B).
-# #                OT_Only OT_Type Living Nonliving PM_Del PM_Act PM Lure
-# CODEBOOK_EVEN = {
-#     129:        ( 1,      0,      1,     0,        0,     0,     0, 0),
-#     130:        ( 1,      0,      0,     1,        0,     0,     0, 0),
-#     145:        ( 1,      1,      1,     0,        0,     0,     0, 0),
-#     146:        ( 1,      1,      0,     1,        0,     0,     0, 0),
-#     33:         ( 0,      0,      1,     0,        1,     0,     0, 0),
-#     34:         ( 0,      0,      0,     1,        1,     0,     0, 0),
-#     36:         ( 0,      0,      0,     0,        1,     0,     1, 0),
-#     40:         ( 0,      0,      0,     0,        1,     0,     0, 1),
-#     81:         ( 0,      1,      1,     0,        0,     1,     0, 0),
-#     82:         ( 0,      1,      0,     1,        0,     1,     0, 0),
-#     84:         ( 0,      1,      0,     0,        0,     1,     1, 0),
-#     88:         ( 0,      1,      0,     0,        0,     1,     0, 1),
-#     1:          ( 0,      0,      1,     0,        0,     0,     0, 0),
-#     2:          ( 0,      0,      0,     1,        0,     0,     0, 0),
-#     17:         ( 0,      1,      1,     0,        0,     0,     0, 0),
-#     18:         ( 0,      1,      0,     1,        0,     0,     0, 0),
-# }
-
-
-# def build_mask_for_one_trigger(df, pin_values, trigger_cols):
-#     """
-#     Build a True/False mask that is True for every row in df where the
-#     8 pin columns exactly match the given pin values.
-
-#     Walks through each of the 8 pin columns one at a time. For each
-#     column, checks whether the value in df matches the expected pin
-#     value (0 or 1) from the codebook. The final mask is True only for
-#     rows where ALL 8 columns matched.
-
-#     Parameters
-#     ----------
-#     df           : the dataframe with 8 binarized pin columns
-#     pin_values   : tuple of 8 expected values (0 or 1), in the order
-#                    of trigger_cols
-#     trigger_cols : list of the 8 pin column names
-
-#     Returns
-#     -------
-#     A pandas Series of booleans, one value per row in df.
-#     """
-#     # Start by assuming every row matches; we'll narrow it down.
-#     mask = pd.Series(True, index=df.index)
-
-#     # For each of the 8 columns, check whether the column equals the
-#     # expected pin value at that position. If even one column doesn't
-#     # match for a given row, that row's mask value becomes False.
-#     for column_name, expected_value in zip(trigger_cols, pin_values):
-#         column_matches = df[column_name] == expected_value
-#         mask = mask & column_matches
-
-#     return mask
-
-
-# def create_trigger_map(df, codebook, trigger_cols=TRIGGER_COLS):
-#     """
-#     Given a codebook mapping trigger IDs to pin combinations, return
-#     a dictionary mapping each trigger ID to a True/False mask showing
-#     which rows in df belong to that trigger.
-
-#     Parameters
-#     ----------
-#     df           : the dataframe with 8 binarized pin columns
-#     codebook     : dictionary of trigger_id -> tuple of 8 pin values
-#     trigger_cols : list of the 8 pin column names
-
-#     Returns
-#     -------
-#     A dictionary mapping each trigger ID to its boolean mask.
-#     """
-#     trigger_map = {}
-
-#     # Walk through each entry in the codebook and build its mask.
-#     for trigger_id, pin_values in codebook.items():
-#         mask = build_mask_for_one_trigger(df, pin_values, trigger_cols)
-#         trigger_map[trigger_id] = mask
-
-#     return trigger_map
-
-
-# # Convenience wrappers so the main script doesn't need to know which
-# # codebook constant to import.
-# def create_trigger_map_odd(df):
-#     return create_trigger_map(df, CODEBOOK_ODD)
-
-
-# def create_trigger_map_even(df):
-#     return create_trigger_map(df, CODEBOOK_EVEN)
+def get_matched_mask(trigger_map):
+    """
+    Given all the trigger masks, return a single True/False series
+    that is True for any row that belongs to at least one trigger condition,
+    and False for every other row.
+    """
+    masks = list(trigger_map.values())
+    return pd.concat(masks, axis=1).any(axis=1)
