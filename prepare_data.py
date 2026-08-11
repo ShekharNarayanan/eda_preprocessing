@@ -89,7 +89,7 @@ for path in acq_files:
         f"({report['unknown_pin_combo_periods']} periods)" # TODO: specify where in the recording this happened
     )
 
-    unknown_start_min, unknown_end_min = build_trigger_data.get_unknown_spans_minutes(
+    unknown_start_min, unknown_end_min = summarize_data.get_unknown_spans_minutes(
         unknown_pin_combos, fs=config["SAMPLING_RATE"]
     )
 
@@ -108,7 +108,7 @@ for path in acq_files:
     })
 
     # Collect the breakdown of unmatched pin combinations for this participant.
-    breakdown = build_trigger_data.get_unknown_pin_combos_breakdown(
+    breakdown = summarize_data.get_unknown_pin_combos_breakdown(
         df, config["TRIGGER_COLS"], trigger_map, fs=config["SAMPLING_RATE"],
     )
     if not breakdown.empty:
