@@ -31,9 +31,10 @@ if not parquet_files:
     raise FileNotFoundError(f"No clean_*.parquet files found in {prepared_dir}")
 
 # Collectors for the plot and the summary table.
-bars_per_participant  = {}
-summary_rows          = []
-recording_lengths_min = []
+bars_per_participant          = {}
+summary_rows                  = []
+recording_lengths_min         = []
+participants_without_unknowns = []
 
 
 # Look at each participant one at a time.
@@ -53,6 +54,13 @@ for path in parquet_files:
     unknown_mask  = trigger == -1
     unknown_spans = trial_boundaries.get_run_boundaries(unknown_mask, fs=fs)
 
+    # Participants without any unknown periods have nothing to show here, so
+    # they are left out of both the table and the plot. Their names are kept
+    # so it stays clear that they were read and had none.
+    if unknown_spans.empty:
+        participants_without_unknowns.append(participant_id)
+        continue
+
     bars_per_participant[participant_id] = diagnostic_plot_utils.get_span_bars(
         unknown_spans, fs=fs, min_bar_min=MIN_BAR_MIN,
     )
@@ -65,6 +73,12 @@ for path in parquet_files:
 # The x axis runs to the length of the longest recording so that every row
 # shares one scale and positions can be compared between participants.
 recording_length_min = max(recording_lengths_min)
+
+if participants_without_unknowns:
+    print(f"\nNo unknown pin combos found for: {', '.join(participants_without_unknowns)}")
+
+if not summary_rows:
+    raise SystemExit("No participant had any unknown pin combo periods, nothing to plot.")
 
 summary_table = pd.DataFrame(summary_rows)
 print("\nUnknown pin combo summary:")
