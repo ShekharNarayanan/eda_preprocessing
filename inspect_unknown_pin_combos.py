@@ -35,6 +35,7 @@ bars_per_participant          = {}
 summary_rows                  = []
 recording_lengths_min         = []
 participants_without_unknowns = []
+gaps_to_first_trial_s         = {}
 
 
 # Look at each participant one at a time.
@@ -65,8 +66,32 @@ for path in parquet_files:
         unknown_spans, fs=fs, min_bar_min=MIN_BAR_MIN,
     )
 
+    # How long after the unknown period does the first real trial start?
+    # This assumes the unknown period sits at the start of the recording and
+    # finishes before any trial begins. That assumption is checked below
+    # rather than trusted, because a participant who breaks it would give a
+    # gap that looks like a number but does not mean anything.
+    first_trial_onset = trial_boundaries.get_first_trial_onset(trigger)
+
+    if first_trial_onset is None:
+        print(f"  WARNING participant {participant_id}: no recognised trials found")
+        gap_s = None
+    else:
+        spans_after_first_trial = (unknown_spans["onset"] > first_trial_onset).sum()
+        if spans_after_first_trial > 0:
+            print(
+                f"  WARNING participant {participant_id}: {spans_after_first_trial} "
+                f"unknown period(s) start after the first trial, so this recording "
+                f"does not match the assumption that they only occur at the start"
+            )
+
+        last_unknown_offset = unknown_spans["offset"].max()
+        gap_s               = round((first_trial_onset - last_unknown_offset) / fs, 2)
+        gaps_to_first_trial_s[participant_id] = gap_s
+
     summary_row = {"participant_id": participant_id}
     summary_row.update(summarize_data.summarize_unknown_spans(unknown_spans, fs=fs))
+    summary_row["gap_to_first_trial_s"] = gap_s
     summary_rows.append(summary_row)
 
 
@@ -102,3 +127,16 @@ for page_number, figure in enumerate(figures, start=1):
 
     figure.savefig(figure_path, dpi=150)
     print(f"Figure saved -> {figure_path}")
+
+if gaps_to_first_trial_s:
+    gap_figure = diagnostic_plot_utils.plot_gap_to_first_trial(gaps_to_first_trial_s)
+    gap_path   = output_dir / "gap_to_first_trial.png"
+    gap_figure.savefig(gap_path, dpi=150)
+    print(f"Figure saved -> {gap_path}")
+
+    unexpected = [pid for pid, gap in gaps_to_first_trial_s.items() if gap < 0]
+    if unexpected:
+        print(
+            f"\nNOTE: unknown periods were found after the first trial for: "
+            f"{', '.join(unexpected)}. Their gap values are not meaningful."
+        )
