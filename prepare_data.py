@@ -84,7 +84,7 @@ for path in acq_files:
     print(
         f"Participant {participant_id}: "
         f"matched {report['matched_pct']}%, "
-        f"baseline {report['baseline_pct']}%, "
+        f"all pins off {report['all_pins_off_pct']}%, "
         f"unknown pin combos {report['unknown_pin_combo_pct']}% "
         f"({report['unknown_pin_combo_periods']} periods)" # TODO: specify where in the recording this happened
     )
@@ -100,7 +100,7 @@ for path in acq_files:
         'version':                   'even' if even else 'odd',
         'total_duration_min':        report['total_duration_min'],
         'matched_pct':               report['matched_pct'],
-        'baseline_pct':              report['baseline_pct'],
+        'all_pins_off_pct':          report['all_pins_off_pct'],
         'unknown_pin_combo_pct':     report['unknown_pin_combo_pct'],
         'unknown_pin_combo_periods': report['unknown_pin_combo_periods'],
         'unknown_start_min':         unknown_start_min,
@@ -146,6 +146,3 @@ with pd.ExcelWriter(report_path) as writer:
         )
 
 print(f"\nReport saved -> {report_path}")
-
-
-

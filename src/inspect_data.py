@@ -122,7 +122,7 @@ def summarize_data(df, trigger_cols, trigger_map, fs=2000):
     This function splits every row into exactly one of three buckets:
 
         matched           : the row belongs to a known trigger condition
-        baseline          : all 8 pin columns are zero (no signal at all)
+        all pins off      : all 8 pin columns are zero (no pin is active)
         unknown pin combo : some pins are on, but the combination does not
                             match any trigger in the codebook
 
@@ -132,11 +132,11 @@ def summarize_data(df, trigger_cols, trigger_map, fs=2000):
     total = len(df)
 
     matched           = get_matched_mask(trigger_map)
-    baseline          = (df[trigger_cols] == 0).all(axis=1)
-    unknown_pin_combo = ~matched & ~baseline
+    all_pins_off      = (df[trigger_cols] == 0).all(axis=1)
+    unknown_pin_combo = ~matched & ~all_pins_off
 
     n_matched           = matched.sum()
-    n_baseline          = baseline.sum()
+    n_all_pins_off      = all_pins_off.sum()
     n_unknown_pin_combo = unknown_pin_combo.sum()
 
     def fmt(n):
@@ -145,10 +145,10 @@ def summarize_data(df, trigger_cols, trigger_map, fs=2000):
     print(f"Total rows         : {total:,} (~{total/(fs*60):.2f} min @ {fs}Hz)")
     print("-" * 58)
     print(f"Matched            : {fmt(n_matched)}")
-    print(f"Baseline (zeros)   : {fmt(n_baseline)}")
+    print(f"All pins off       : {fmt(n_all_pins_off)}")
     print(f"Unknown pin combos : {fmt(n_unknown_pin_combo)}")
     print("-" * 58)
-    assert n_matched + n_baseline + n_unknown_pin_combo == total, "rows don't add up!"
+    assert n_matched + n_all_pins_off + n_unknown_pin_combo == total, "rows don't add up!"
 
     if n_unknown_pin_combo > 0:
         print("\nPer unknown pin combination:")
