@@ -115,3 +115,63 @@ def plot_unknown_timeline(bars_per_participant, recording_length_min,
         figures.append(fig)
 
     return figures
+
+
+def plot_gap_to_first_trial(gaps_per_participant, bar_colour="#3D7A99",
+                            negative_colour="#D85A30"):
+    """
+    Draw one horizontal bar per participant showing how much time passed
+    between the end of the last unknown pin combo period and the start of
+    the first recognised trial.
+
+    Participants are sorted by gap length rather than by ID, so the shortest
+    and longest gaps sit together at the ends of the plot.
+
+    This assumes the unknown period sits at the start of the recording and
+    finishes before any trial begins. A negative gap means that assumption
+    did not hold for that participant, because an unknown period was found
+    after the first trial. Those bars are drawn in a different colour so
+    they are not read as ordinary short gaps.
+
+    Parameters
+    ----------
+    gaps_per_participant : dictionary of participant ID to gap in seconds
+    bar_colour           : colour for positive gaps
+    negative_colour      : colour for negative gaps, which mean an unknown
+                           period was found after the first trial
+
+    Returns
+    -------
+    A single matplotlib figure.
+    """
+    sorted_items    = sorted(gaps_per_participant.items(), key=lambda item: item[1])
+    participant_ids = [participant_id for participant_id, gap in sorted_items]
+    gaps_s          = [gap for participant_id, gap in sorted_items]
+
+    colours = []
+    for gap in gaps_s:
+        colours.append(negative_colour if gap < 0 else bar_colour)
+
+    fig_height = 1.5 + 0.3 * len(participant_ids)
+    fig, ax    = plt.subplots(figsize=(9, fig_height))
+
+    y_positions = range(len(participant_ids))
+    ax.barh(y_positions, gaps_s, color=colours, height=0.7)
+
+    ax.set_yticks(list(y_positions))
+    ax.set_yticklabels(participant_ids, fontsize=9)
+    ax.set_ylim(-0.7, len(participant_ids) - 0.3)
+
+    ax.axvline(0, color="grey", linewidth=0.8)
+    ax.set_xlabel("seconds between end of unknown period and first trial")
+    ax.grid(axis="x", linestyle=":", linewidth=0.5, alpha=0.6)
+    ax.set_axisbelow(True)
+    ax.set_title("Gap from unknown pin combo period to first trial",
+                 fontsize=11, loc="left")
+
+    if any(gap < 0 for gap in gaps_s):
+        note = "bars left of zero mean unknown periods were found after the first trial"
+        fig.text(0.01, 0.01, note, fontsize=7, color="grey")
+
+    fig.tight_layout()
+    return fig

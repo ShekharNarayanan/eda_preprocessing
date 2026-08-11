@@ -88,3 +88,27 @@ def get_trial_boundaries(trigger_map, fs=2000):
 
     result = pd.concat(all_boundaries).sort_values("onset").reset_index(drop=True)
     return result[["trigger", "onset", "offset", "duration_samples", "duration_s"]]
+
+def get_first_trial_onset(trigger):
+    """
+    Find the sample index where the first recognised trial begins.
+ 
+    Recognised trials are the rows with a positive trigger ID. Rows labelled
+    0 (all pins off) and -1 (unknown pin combination) are not trials, so they
+    are ignored here.
+ 
+    Parameters
+    ----------
+    trigger : the trigger column of one participant's recording
+ 
+    Returns
+    -------
+    The sample index of the first trial, or None if the recording contains
+    no recognised trials at all.
+    """
+    is_trial = trigger > 0
+ 
+    if not is_trial.any():
+        return None
+ 
+    return trigger.index[is_trial][0]
