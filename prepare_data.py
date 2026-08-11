@@ -3,10 +3,10 @@ import neurokit2 as nk
 import pandas as pd
 from pathlib import Path
 
-import src.io as io
-import src.trigger_utils as trigger_utils
-import src.clean_data as clean_data
-import src.inspect_data as inspect_data
+import src.file_utils as file_utils
+import src.trigger_codebook as trigger_codebook
+import src.build_trigger_data as build_trigger_data
+import src.summarize_data as summarize_data
 
 # Load the config file from the same folder as this script.
 root        = Path(__file__).parent
@@ -20,7 +20,7 @@ prepared_dir = Path(config["PREPARED_DIR"])
 prepared_dir.mkdir(parents=True, exist_ok=True)
 
 # Find every .acq recording in the input folder.
-acq_files = io.get_acq_files(config["INPUT_DIR"])
+acq_files = file_utils.get_acq_files(config["INPUT_DIR"])
 
 # Collectors for the cross-participant Excel report.
 # summary_rows        : one row per participant
@@ -35,7 +35,7 @@ for path in acq_files:
     # The participant ID is encoded in the filename. Even and odd IDs
     # belong to different experimental versions (A and B) with different
     # trigger codebooks, so we need to know which one we're dealing with.
-    participant_id = io.get_participant_id(path)
+    participant_id = file_utils.get_participant_id(path)
 
     # if participant_id in [138, 222,226]:  
     participant_number = int(str(participant_id).split("_")[0])    
@@ -62,19 +62,19 @@ for path in acq_files:
     # Pick the correct trigger codebook based on whether the participant
     # is even or odd.
     trigger_map = (
-        trigger_utils.create_trigger_map_even(df)
+        trigger_codebook.create_trigger_map_even(df)
         if even
-        else trigger_utils.create_trigger_map_odd(df)
+        else trigger_codebook.create_trigger_map_odd(df)
     )
 
     # get trigger summary
-    trigger_summary = inspect_data.summarize_triggers(trigger_map, fs=config["SAMPLING_RATE"])
+    trigger_summary = summarize_data.summarize_triggers(trigger_map, fs=config["SAMPLING_RATE"])
     trigger_summary.insert(0, 'participant_id', participant_id)
     trigger_summary_tables.append(trigger_summary)
 
 
     # Collapse the 8 pin columns into one 'trigger' column.
-    clean_df, report, unknown_pin_combos = clean_data.build_clean_dataset(
+    clean_df, report, unknown_pin_combos = build_trigger_data.build_clean_dataset(
         df           = df,
         trigger_cols = config["TRIGGER_COLS"],
         trigger_map  = trigger_map,
@@ -89,7 +89,7 @@ for path in acq_files:
         f"({report['unknown_pin_combo_periods']} periods)" # TODO: specify where in the recording this happened
     )
 
-    unknown_start_min, unknown_end_min = clean_data.get_unknown_spans_minutes(
+    unknown_start_min, unknown_end_min = build_trigger_data.get_unknown_spans_minutes(
         unknown_pin_combos, fs=config["SAMPLING_RATE"]
     )
 
@@ -108,7 +108,7 @@ for path in acq_files:
     })
 
     # Collect the breakdown of unmatched pin combinations for this participant.
-    breakdown = clean_data.get_unknown_pin_combos_breakdown(
+    breakdown = build_trigger_data.get_unknown_pin_combos_breakdown(
         df, config["TRIGGER_COLS"], trigger_map, fs=config["SAMPLING_RATE"],
     )
     if not breakdown.empty:
