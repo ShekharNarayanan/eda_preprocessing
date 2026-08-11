@@ -108,10 +108,18 @@ def plot_unknown_timeline(bars_per_participant, recording_length_min,
             title = f"{title} (page {page_number} of {total_pages})"
         ax.set_title(title, fontsize=11, loc="left")
 
-        note = f"bars narrower than {min_bar_min} min are drawn at that width"
-        fig.text(0.01, 0.01, note, fontsize=7, color="grey")
+        # The note sits below the axis label. Space for it is reserved as a
+        # fraction of the figure height, because the figure height changes with
+        # the number of participants and a fixed fraction would either overlap
+        # the label on tall figures or leave a large gap on short ones.
+        note_height  = 0.3
+        note_fraction = note_height / fig_height
 
-        fig.tight_layout()
+        fig.tight_layout(rect=[0, note_fraction, 1, 1])
+
+        note = f"bars narrower than {min_bar_min} min are drawn at that width"
+        fig.text(0.01, note_fraction / 3, note, fontsize=7, color="grey")
+
         figures.append(fig)
 
     return figures
@@ -169,9 +177,16 @@ def plot_gap_to_first_trial(gaps_per_participant, bar_colour="#3D7A99",
     ax.set_title("Gap from unknown pin combo period to first trial",
                  fontsize=11, loc="left")
 
-    if any(gap < 0 for gap in gaps_s):
-        note = "bars left of zero mean unknown periods were found after the first trial"
-        fig.text(0.01, 0.01, note, fontsize=7, color="grey")
+    # Space for the note is reserved as a fraction of the figure height, so it
+    # never lands on top of the axis label however tall the figure gets.
+    has_note      = any(gap < 0 for gap in gaps_s)
+    note_height   = 0.3 if has_note else 0.0
+    note_fraction = note_height / fig_height
 
-    fig.tight_layout()
+    fig.tight_layout(rect=[0, note_fraction, 1, 1])
+
+    if has_note:
+        note = "bars left of zero mean unknown periods were found after the first trial"
+        fig.text(0.01, note_fraction / 3, note, fontsize=7, color="grey")
+
     return fig
