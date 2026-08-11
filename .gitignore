@@ -12,7 +12,9 @@ wheels/
 # Data Folder
 input/**
 prepared_data/**
+output/**
 
 # keep gitkeep files
+!output/.gitkeep
 !input/.gitkeep
 !prepared_data/.gitkeep
