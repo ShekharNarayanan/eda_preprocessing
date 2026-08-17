@@ -85,9 +85,20 @@ for path in parquet_files:
                 f"does not match the assumption that they only occur at the start"
             )
 
-        last_unknown_offset = unknown_spans["offset"].max()
-        gap_s               = round((first_trial_onset - last_unknown_offset) / fs, 2)
-        gaps_to_first_trial_s[participant_id] = gap_s
+        # Only the unknown periods that finish before the first trial are part
+        # of this gap. A participant can also have unknown periods later in the
+        # recording, and measuring from one of those would give a large negative
+        # number that says nothing about the start of the session.
+        spans_before_first_trial = unknown_spans[
+            unknown_spans["offset"] < first_trial_onset
+        ]
+
+        if spans_before_first_trial.empty:
+            gap_s = None
+        else:
+            last_unknown_offset = spans_before_first_trial["offset"].max()
+            gap_s               = round((first_trial_onset - last_unknown_offset) / fs, 2)
+            gaps_to_first_trial_s[participant_id] = gap_s
 
     summary_row = {"participant_id": participant_id}
     summary_row.update(summarize_data.summarize_unknown_spans(unknown_spans, fs=fs))
