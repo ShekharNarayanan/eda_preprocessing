@@ -2,6 +2,7 @@ import pandas as pd
 from src.trigger_codebook import get_matched_mask
 from src.trial_boundaries import get_run_boundaries
 
+
 def get_unknown_pin_combo_mask(df, trigger_cols, trigger_map):
     """
     Return a True/False series that is True for every row whose pin
@@ -113,5 +114,55 @@ def build_clean_dataset(df, trigger_cols, trigger_map, fs=2000):
 
     return clean_df, report, unknown_pin_combos
 
+
+def add_baseline_label(trigger):
+    """
+    Relabel the trigger column so that the period before the experiment
+    starts is marked as baseline.
+
+    Everything before the first recognised trial becomes 0, whatever it was
+    labelled before. This period is the recording made before the paradigm
+    began, so it is a reference stretch rather than any experimental
+    condition, and the state of the pins during it is not meaningful.
+
+    After the first trial the labels keep their original meaning, except
+    that all-pins-off rows become -2 so they are not confused with baseline.
+
+    The final labels are:
+         0 : baseline, everything before the first trial
+        -1 : unknown pin combination, after the first trial
+        -2 : all pins off, after the first trial
+         N : the trigger ID of the trial active at that row
+
+    Parameters
+    ----------
+    trigger : the trigger column built by build_trigger_column
+
+    Returns
+    -------
+    A pandas Series of integers, indexed the same as the input. If the
+    recording contains no trials at all it is returned unchanged.
+    """
+    from src.trial_boundaries import get_first_trial_onset
+
+    first_trial_onset = get_first_trial_onset(trigger)
+
+    if first_trial_onset is None:
+        return trigger.copy()
+
+    relabelled = trigger.copy()
+
+    before_first_trial = relabelled.index < first_trial_onset
+    after_first_trial  = ~before_first_trial
+
+    # Everything recorded before the experiment started is the baseline.
+    relabelled.loc[before_first_trial] = 0
+
+    # All pins off after the experiment started means something different
+    # from baseline, so it gets its own label.
+    all_pins_off_after = after_first_trial & (relabelled == 0)
+    relabelled.loc[all_pins_off_after] = -2
+
+    return relabelled
 
 
