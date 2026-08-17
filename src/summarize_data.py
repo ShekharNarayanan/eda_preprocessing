@@ -196,3 +196,43 @@ def get_unknown_spans_minutes(unknown_pin_combos, fs=2000):
     start_min = (unknown_pin_combos["onset"]  / (fs * 60)).round(1).tolist()
     end_min   = (unknown_pin_combos["offset"] / (fs * 60)).round(1).tolist()
     return start_min, end_min
+
+def summarize_baseline_labels(trigger, fs=2000):
+    """
+    Count how the recording is split up after the baseline label has been
+    added, so the saved data can be described as it actually stands.
+
+    This is the companion to the report returned by build_clean_dataset,
+    which describes the same recording before the relabelling. Reading the
+    two side by side shows what the relabelling changed.
+
+    Parameters
+    ----------
+    trigger : the trigger column after add_baseline_label has been applied
+    fs      : sampling rate in Hz (default 2000)
+
+    Returns
+    -------
+    A dictionary with sample counts, durations and percentages for the four
+    categories the relabelled column can contain.
+    """
+    total = len(trigger)
+
+    n_matched           = (trigger >  0).sum()
+    n_baseline          = (trigger ==  0).sum()
+    n_unknown_pin_combo = (trigger == -1).sum()
+    n_all_pins_off      = (trigger == -2).sum()
+
+    return {
+        "total_samples":             total,
+        "total_duration_min":        round(total / (fs * 60), 2),
+        "matched_samples":           int(n_matched),
+        "matched_pct":               round(100 * n_matched / total, 1),
+        "baseline_samples":          int(n_baseline),
+        "baseline_pct":              round(100 * n_baseline / total, 1),
+        "baseline_duration_min":     round(int(n_baseline) / (fs * 60), 2),
+        "all_pins_off_samples":      int(n_all_pins_off),
+        "all_pins_off_pct":          round(100 * n_all_pins_off / total, 1),
+        "unknown_pin_combo_samples": int(n_unknown_pin_combo),
+        "unknown_pin_combo_pct":     round(100 * n_unknown_pin_combo / total, 1),
+    }
