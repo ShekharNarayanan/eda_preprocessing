@@ -4,7 +4,7 @@ from pathlib import Path
 
 import src.file_utils as file_utils
 import src.trial_boundaries as trial_boundaries
-import src.diagnostic_plot_utils as diagnostic_plot_utils
+import src.baseline_plot_utils as baseline_plot_utils
 
 # Load the config file from the same folder as this script.
 root        = Path(__file__).parent
@@ -63,7 +63,7 @@ for path in parquet_files:
         bars_per_participant[participant_id] = []
         continue
 
-    bars_per_participant[participant_id] = diagnostic_plot_utils.get_span_bars(
+    bars_per_participant[participant_id] = baseline_plot_utils.get_span_bars(
         baseline_spans, fs=fs, min_bar_min=MIN_BAR_MIN,
     )
 
@@ -99,7 +99,7 @@ table_path = output_dir / "baseline_summary.csv"
 summary_table.to_csv(table_path, index=False)
 print(f"\nTable saved -> {table_path}")
 
-figures = diagnostic_plot_utils.plot_span_timeline(
+figures = baseline_plot_utils.plot_span_timeline(
     bars_per_participant,
     recording_length_min = recording_length_min,
     title                = "Baseline period, before the first trial",
