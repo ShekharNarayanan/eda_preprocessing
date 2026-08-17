@@ -28,6 +28,7 @@ acq_files = file_utils.get_acq_files(config["INPUT_DIR"])
 summary_rows            = []
 unknown_combo_tables    = []
 trigger_summary_tables  = []
+baseline_rows           = []
 
 
 # Process each participant one at a time.
@@ -38,7 +39,7 @@ for path in acq_files:
     participant_id = file_utils.get_participant_id(path)
 
     # if participant_id in [138, 222,226]:  
-    participant_number = int(str(participant_id).split("_")[0])    
+    participant_number = file_utils.get_participant_number(participant_id)  
     even = False if participant_number == 142 else participant_number % 2 == 0 # participant 142 has odd trigger mapping
 
 
@@ -81,6 +82,14 @@ for path in acq_files:
         fs           = config["SAMPLING_RATE"],
     )
 
+    # Attach baseline labels to the dataset (relabel the time points before the first trial as baseline)
+    clean_df["trigger"] = build_trigger_data.add_baseline_label(clean_df["trigger"])
+
+    # build a report sheet after the label transformation occurs
+    baseline_report = summarize_data.summarize_baseline_labels(clean_df["trigger"], fs=config["SAMPLING_RATE"])
+    baseline_report["participant_id"] = participant_id
+    baseline_rows.append(baseline_report)
+
     print(
         f"Participant {participant_id}: "
         f"matched {report['matched_pct']}%, "
@@ -116,13 +125,10 @@ for path in acq_files:
         unknown_combo_tables.append(breakdown)
 
     # Save the cleaned dataframe as parquet.
-    out_path = prepared_dir / f"clean_{participant_id}.parquet"
-    clean_df.to_parquet(out_path)
+    out_path = file_utils.save_prepared_file(clean_df, prepared_dir, participant_id)
     print(f"Saved -> {out_path}")
 
 
-# After processing all participants, write the cross-participant Excel report.
-report_path = prepared_dir / "report.xlsx"
 
 # After processing all participants, write the cross-participant Excel report.
 report_path = prepared_dir / "report.xlsx"
@@ -144,5 +150,14 @@ with pd.ExcelWriter(report_path) as writer:
         pd.concat(unknown_combo_tables, ignore_index=True).sort_values('participant_id').set_index('participant_id').to_excel(
             writer, sheet_name="unknown_pin_combos", index=True
         )
+
+    # 4. Add data with relaballed columns for baseline
+    if baseline_rows:
+        pd.DataFrame(baseline_rows).sort_values('participant_id').set_index('participant_id').to_excel(
+            writer, sheet_name="after_baseline_relabelling", index=True
+        )
+
+
+    
 
 print(f"\nReport saved -> {report_path}")
