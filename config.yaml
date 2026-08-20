@@ -25,8 +25,8 @@ TRIGGER_COLS : [
 ]
 
 # EDA parameters
-EDA_LOWPASS_HZ          : 1.0  # low-pass filter cutoff in Hz
 EDA_DOWNSAMPLE          : 100   # target sampling rate after downsampling (Hz)
+# downsampling approach: https://www.researchgate.net/publication/228888313_Using_skin_conductance_in_judgment_and_decision_making_research
 SCR_DETECTION_THRESHOLD : 0.03 # micro siemens
 
 # ECG parameters

@@ -3,11 +3,11 @@ import neurokit2 as nk
 import pandas as pd
 from pathlib import Path
 
-import src.file_utils as file_utils
-import src.trigger_codebook as trigger_codebook
-import src.build_trigger_data as build_trigger_data
-import src.summarize_data as summarize_data
-import src.report_utils as report_utils
+import src.common.file_utils as file_utils
+import src.preparation.trigger_codebook as trigger_codebook
+import src.preparation.build_trigger_data as build_trigger_data
+import src.preparation.summarize_data as summarize_data
+import src.common.report_utils as report_utils
 
 # Load the config file from the same folder as this script.
 root        = Path(__file__).parent

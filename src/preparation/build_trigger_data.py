@@ -1,6 +1,7 @@
 import pandas as pd
-from src.trigger_codebook import get_matched_mask
-from src.trial_boundaries import get_run_boundaries
+from src.preparation.trigger_codebook import get_matched_mask
+from src.common.trial_boundaries import get_run_boundaries, get_first_trial_onset
+
 
 
 def get_unknown_pin_combo_mask(df, trigger_cols, trigger_map):
@@ -143,7 +144,6 @@ def add_baseline_label(trigger):
     A pandas Series of integers, indexed the same as the input. If the
     recording contains no trials at all it is returned unchanged.
     """
-    from src.trial_boundaries import get_first_trial_onset
 
     first_trial_onset = get_first_trial_onset(trigger)
 

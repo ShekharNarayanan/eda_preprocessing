@@ -2,9 +2,9 @@ import yaml
 import pandas as pd
 from pathlib import Path
 
-import src.file_utils as file_utils
-import src.trial_boundaries as trial_boundaries
-import src.baseline_plot_utils as baseline_plot_utils
+import src.common.file_utils as file_utils
+import src.common.trial_boundaries as trial_boundaries
+import src.common.baseline_plot_utils as baseline_plot_utils
 
 # Load the config file from the same folder as this script.
 root        = Path(__file__).parent
