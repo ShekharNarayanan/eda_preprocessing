@@ -8,6 +8,10 @@ OUTPUT_DIR : 'output'
 # Recording
 SAMPLING_RATE : 2000  # Hz
 
+# participants to ignore
+ignore_participants : ["222", "226"]
+no_eda : ["138"]
+
 # Trigger columns
 TRIGGER_COLS : [
     "OT_Only",
@@ -22,7 +26,8 @@ TRIGGER_COLS : [
 
 # EDA parameters
 EDA_LOWPASS_HZ          : 1.0  # low-pass filter cutoff in Hz
-EDA_DOWNSAMPLE          : 50   # target sampling rate after downsampling (Hz)
+EDA_DOWNSAMPLE          : 100   # target sampling rate after downsampling (Hz)
 SCR_DETECTION_THRESHOLD : 0.03 # micro siemens
 
 # ECG parameters
+
