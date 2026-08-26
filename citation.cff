@@ -1,0 +1,10 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+type: software
+authors:
+- family-names: "Narayanan"
+  given-names: "Shekhar"
+  affiliation: "Tilburg University"
+  orcid: "https://orcid.org/0000-0001-7609-2042"
+
+url: "https://github.com/ShekharNarayanan/eda_preprocessing"
