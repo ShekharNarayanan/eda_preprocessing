@@ -1,5 +1,5 @@
 import pandas as pd
-from src.preparation.trigger_codebook import get_matched_mask
+from src.segmentation.trigger_codebook import get_matched_mask
 from src.common.trial_boundaries import get_run_boundaries, get_first_trial_onset
 
 

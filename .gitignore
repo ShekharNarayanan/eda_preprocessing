@@ -11,10 +11,10 @@ wheels/
 
 # Data Folder
 input/**
-prepared_data/**
+segmented_data/**
 output/**
 
 # keep gitkeep files
 !output/.gitkeep
 !input/.gitkeep
-!prepared_data/.gitkeep
+!segmented_data/.gitkeep

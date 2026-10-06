@@ -1,6 +1,6 @@
 # EDA and ECG Preprocessing Pipeline
 
-A Python pipeline for cleaning and preparing physiological data recorded during a psychophysiology experiment, so that downstream analysis of EDA and ECG signals can proceed on clean, well-labelled data.
+A Python pipeline for cleaning and segmenting physiological data recorded during a psychophysiology experiment, so that downstream analysis of EDA and ECG signals can proceed on clean, well-labelled data.
 
 ## Table of contents
 
@@ -9,8 +9,8 @@ A Python pipeline for cleaning and preparing physiological data recorded during 
   - [2.1 Project structure](#21-project-structure)
   - [2.2 What each script does](#22-what-each-script-does)
   - [2.3 Configuration](#23-configuration)
-- [3. Data preparation](#3-data-preparation)
-  - [3.1 Why a preparation step is needed](#31-why-a-preparation-step-is-needed)
+- [3. Data segmentation](#3-data-segmentation)
+  - [3.1 Why a segmentation step is needed](#31-why-a-segmentation-step-is-needed)
   - [3.2 The trigger column](#32-the-trigger-column)
   - [3.3 Output](#33-output)
   - [3.4 Inspecting a single participant](#34-inspecting-a-single-participant)
@@ -44,7 +44,7 @@ The end goal of this project is to analyze the EDA and ECG signals condition by 
 ```
 .
 ├── config.yaml                      Pipeline parameters (paths, sampling rate, etc.)
-├── run_preparation.py               Step 1: raw .acq files to labelled parquet
+├── run_segmentation.py              Step 1: raw .acq files to labelled parquet
 ├── inspect_baseline_duration.py     Step 2: check the baseline period per participant
 └── src/
     ├── common/                      Used by more than one stage
@@ -52,7 +52,7 @@ The end goal of this project is to analyze the EDA and ECG signals condition by 
     │   ├── trial_boundaries.py      Finding where periods start and end
     │   ├── report_utils.py          Reading and writing the Excel report
     │   └── baseline_plot_utils.py   Drawing the baseline timeline
-    ├── preparation/                 Used by the preparation stage only
+    ├── segmentation/                Used by the segmentation stage only
     │   ├── trigger_codebook.py      The two codebooks and their trigger masks
     │   ├── build_trigger_data.py    Turning 8 pin columns into one trigger column
     │   └── summarize_data.py        Read-only summaries for the reports
@@ -65,23 +65,23 @@ Scripts at the top level are the ones you run. Everything under `src/` is import
 
 **Entry points**
 
-- **`run_preparation.py`** reads every raw `.acq` recording, collapses the 8 pin columns into a single `trigger` column, labels the pre-experiment period as baseline, and writes one parquet file per participant. It also writes a cross-participant Excel report.
-- **`inspect_baseline_duration.py`** reads the prepared parquet files and reports how much baseline each recording contains, both as a table and as a timeline plot. Run this after `run_preparation.py`.
+- **`run_segmentation.py`** reads every raw `.acq` recording, collapses the 8 pin columns into a single `trigger` column, labels the pre-experiment period as baseline, and writes one parquet file per participant. It also writes a cross-participant Excel report.
+- **`inspect_baseline_duration.py`** reads the segmented parquet files and reports how much baseline each recording contains, both as a table and as a timeline plot. Run this after `run_segmentation.py`.
 
 **Modules in `src/common/`**
 
-- **`file_utils.py`** finds `.acq` and prepared parquet files, extracts participant IDs from either kind of filename, and handles reading and writing prepared files. It also warns if a file's index does not look like sample positions, since every timing calculation depends on that.
+- **`file_utils.py`** finds `.acq` and segmented parquet files, extracts participant IDs from either kind of filename, and handles reading and writing segmented files. It also warns if a file's index does not look like sample positions, since every timing calculation depends on that.
 - **`trial_boundaries.py`** finds the start and end of every contiguous block in the recording, whether that block is a trial, a baseline period, or an unknown pin combination. It also finds where the first trial begins, which is what the baseline label depends on.
-- **`report_utils.py`** reads the cross-participant Excel report back into dataframes, adds a participant's rows to it, and writes it out again. It is what lets a run prepare only the participants that are not in the report yet, without losing the rows of the ones that are.
+- **`report_utils.py`** reads the cross-participant Excel report back into dataframes, adds a participant's rows to it, and writes it out again. It is what lets a run segment only the participants that are not in the report yet, without losing the rows of the ones that are.
 - **`baseline_plot_utils.py`** converts a table of periods into timeline bars and draws one row per participant, splitting across several figures when there are too many to fit on one.
 
-**Modules in `src/preparation/`**
+**Modules in `src/segmentation/`**
 
 - **`trigger_codebook.py`** holds the two codebooks, one for odd and one for even participants, and turns each into a dictionary of boolean masks (the "trigger map"). It also provides the combined mask of every row that matched some trigger.
 - **`build_trigger_data.py`** does the transformation: it builds the single `trigger` column, drops the 8 pin columns, and relabels the pre-experiment period as baseline. It returns the cleaned dataframe alongside a report of what happened.
 - **`summarize_data.py`** turns the results of the above into the numbers that go in the reports: per-trigger trial counts and durations, how the recording splits between categories, and where the unknown pin combo periods were.
 
-These modules all need the 8 pin columns or the trigger map, both of which only exist while a raw recording is being prepared, which is why they sit under `preparation/` rather than in `common/`.
+These modules all need the 8 pin columns or the trigger map, both of which only exist while a raw recording is being segmented, which is why they sit under `segmentation/` rather than in `common/`.
 
 **`src/preprocessing/`**
 
@@ -93,7 +93,7 @@ All pipeline parameters live in `config.yaml`:
 
 ```yaml
 INPUT_DIR: 'input'                    # folder with raw .acq files
-PREPARED_DIR: 'prepared_data'         # folder where cleaned parquet files go
+SEGMENTED_DIR: 'segmented_data'       # folder where cleaned parquet files go
 OUTPUT_DIR: 'output'                  # folder for diagnostic tables and figures
 
 SAMPLING_RATE: 2000                   # Hz
@@ -117,9 +117,9 @@ SCR_DETECTION_THRESHOLD: 0.03         # microsiemens
 
 `EDA_DOWNSAMPLE` and `SCR_DETECTION_THRESHOLD` are for the preprocessing stage and are not read by either of the scripts that exist so far. The same is true of `ignore_participants` and `no_eda`.
 
-## 3. Data preparation
+## 3. Data segmentation
 
-### 3.1 Why a preparation step is needed
+### 3.1 Why a segmentation step is needed
 
 The raw recording stores triggers across 8 parallel port pins, and each unique combination of pins represents one experimental condition (a "trigger"). The codebook that maps pin combinations to trigger IDs is different for odd and even participants, because the experiment was run in two counterbalanced versions (Version A and Version B). Some pin combinations in the recording did not match anything in the codebook (due to experimental hiccups). These were flagged as "unknown" pin combos.
 
@@ -141,7 +141,7 @@ Baseline is defined by position rather than by pin state. Everything before the 
 
 ### 3.3 Output
 
-Each cleaned recording is saved as `clean_<participant_id>.parquet` in `PREPARED_DIR`, containing the original physiological signal columns plus the `trigger` column.
+Each cleaned recording is saved as `clean_<participant_id>.parquet` in `SEGMENTED_DIR`, containing the original physiological signal columns plus the `trigger` column.
 
 Parquet is used instead of CSV because it is much faster to read and write for multi-million-row recordings, and it preserves data types automatically. A 63-minute recording at 2000 Hz is around 30 to 60 MB as parquet versus several hundred MB as CSV.
 
@@ -156,7 +156,7 @@ A cross-participant `report.xlsx` is written alongside the parquet files, with f
 
 The last two sheets are worth reading together. The `summary` sheet describes the trigger column as it was first built, and `after_baseline_relabelling` describes it as it was actually saved.
 
-The report is also what the script uses to decide who still needs preparing. A participant with a row in the `summary` sheet is skipped, so a run after adding one new recording only reads that one `.acq` file, and the rows of everyone already in the report are kept. To prepare a participant again, delete their row from the `summary` sheet.
+The report is also what the script uses to decide who still needs segmenting. A participant with a row in the `summary` sheet is skipped, so a run after adding one new recording only reads that one `.acq` file, and the rows of everyone already in the report are kept. To segment a participant again, delete their row from the `summary` sheet.
 
 While running, the script prints a one-line summary per participant:
 
@@ -174,7 +174,7 @@ import neurokit2 as nk
 import pandas as pd
 
 from src.common import file_utils
-from src.preparation import trigger_codebook
+from src.segmentation import trigger_codebook
 
 with open("config.yaml") as f:
     config = yaml.safe_load(f)
@@ -214,7 +214,7 @@ Now that the trigger map is built, we can proceed with the summary.
 
 ```python
 from src.common import trial_boundaries
-from src.preparation import summarize_data
+from src.segmentation import summarize_data
 
 # one row per trigger condition, with trial counts and durations
 summary = summarize_data.summarize_triggers(trigger_map)
@@ -228,13 +228,13 @@ boundaries = trial_boundaries.get_trial_boundaries(trigger_map)
 
 These are read-only and do not change the dataframe.
 
-To look at a recording that has already been prepared, load the parquet instead. Only the columns you need have to be read:
+To look at a recording that has already been segmented, load the parquet instead. Only the columns you need have to be read:
 
 ```python
 from src.common import file_utils, trial_boundaries
 
-prepared_files = file_utils.get_prepared_files(config["PREPARED_DIR"])
-trigger        = file_utils.read_prepared_file(prepared_files[0], columns=["trigger"])["trigger"]
+segmented_files = file_utils.get_segmented_files(config["SEGMENTED_DIR"])
+trigger         = file_utils.read_segmented_file(segmented_files[0], columns=["trigger"])["trigger"]
 
 # where the baseline period sits
 baseline_spans = trial_boundaries.get_run_boundaries(trigger == 0, fs=fs)
@@ -243,7 +243,7 @@ baseline_spans = trial_boundaries.get_run_boundaries(trigger == 0, fs=fs)
 first_trial_onset = trial_boundaries.get_first_trial_onset(trigger)
 ```
 
-Note that `get_trial_boundaries` needs a trigger map and so only works on a raw recording, while the two functions above work on the prepared `trigger` column.
+Note that `get_trial_boundaries` needs a trigger map and so only works on a raw recording, while the two functions above work on the segmented `trigger` column.
 
 ### 3.5 Notes on the trigger system
 
@@ -258,7 +258,7 @@ Note that participant **142** is a documented exception and uses the odd codeboo
 
 ## 4. Baseline inspection
 
-Run `inspect_baseline_duration.py` after `run_preparation.py` has written the parquet files.
+Run `inspect_baseline_duration.py` after `run_segmentation.py` has written the parquet files.
 
 ### 4.1 What it checks
 
@@ -272,7 +272,7 @@ Both go to `OUTPUT_DIR`:
 - **`baseline_summary.csv`**, one row per participant, giving how many baseline blocks were found, how many minutes they total, and at what minute the baseline ends
 - **`baseline_timeline.png`**, one horizontal bar per participant on a shared axis that runs the full length of the longest recording, so both the length of each baseline and its size relative to the whole session are visible at a glance
 
-`n_baseline_blocks` should be 1 for every participant, since the relabelling writes a single contiguous stretch. Any other value means something unexpected happened during preparation and is worth investigating.
+`n_baseline_blocks` should be 1 for every participant, since the relabelling writes a single contiguous stretch. Any other value means something unexpected happened during segmentation and is worth investigating.
 
 Any participant whose recording somehow begins at the first trial is reported separately, since that participant has no baseline at all.
 
@@ -307,16 +307,16 @@ Main dependencies:
 
 The two scripts run in order. The second reads what the first wrote.
 
-**Step 1: prepare the data**
+**Step 1: segment the data**
 
 Place the raw `.acq` files in the folder named in `config.yaml` under `INPUT_DIR`, then run:
 
 ```bash
 .venv\Scripts\activate
-python -m run_preparation
+python -m run_segmentation
 ```
 
-This loops through every `.acq` file that is not already in the report, works out whether the participant is odd or even, applies the correct codebook, builds the trigger column, adds the baseline label, and writes a parquet file per participant to `PREPARED_DIR` along with `report.xlsx`.
+This loops through every `.acq` file that is not already in the report, works out whether the participant is odd or even, applies the correct codebook, builds the trigger column, adds the baseline label, and writes a parquet file per participant to `SEGMENTED_DIR` along with `report.xlsx`.
 
 **Step 2: check the baselines**
 
@@ -324,11 +324,11 @@ This loops through every `.acq` file that is not already in the report, works ou
 python -m inspect_baseline_duration
 ```
 
-This reads the prepared parquet files and writes the baseline table and timeline to `OUTPUT_DIR`.
+This reads the segmented parquet files and writes the baseline table and timeline to `OUTPUT_DIR`.
 
 ## 6. Next steps
 
-The prepared parquet files are ready for the signal processing stage, which is not yet implemented and will live in `src/preprocessing/`:
+The segmented parquet files are ready for the signal processing stage, which is not yet implemented and will live in `src/preprocessing/`:
 
 1. Filter the continuous EDA and ECG signals
 2. Epoch around trial onsets using the `trigger` column and the boundaries tables

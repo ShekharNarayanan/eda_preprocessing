@@ -2,7 +2,7 @@
 
 # Data paths
 INPUT_DIR  : 'input'
-PREPARED_DIR: 'prepared_data'
+SEGMENTED_DIR: 'segmented_data'
 OUTPUT_DIR : 'output'
 
 # Recording
