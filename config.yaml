@@ -29,5 +29,16 @@ EDA_DOWNSAMPLE          : 100   # target sampling rate after downsampling (Hz)
 # downsampling approach: https://www.researchgate.net/publication/228888313_Using_skin_conductance_in_judgment_and_decision_making_research
 SCR_DETECTION_THRESHOLD : 0.03 # micro siemens
 
+# Settings for preprocessing_charts.py. These are explicit calibration choices;
+# the AcqKnowledge option codes and edge behavior remain unverified.
+PREPROCESSING_CHARTS:
+    EDA_COLUMN: "EDA - EDA, Y, PPGED-R"
+    TARGET_SAMPLING_RATE: 1000
+    RESAMPLING_METHOD: "linear"
+    SMOOTHING_WINDOW_SAMPLES: 100
+    SMOOTHING_METHOD: "median"
+    SMOOTHING_ALIGNMENT: "centered"
+    SMOOTHING_EDGE: "shrink"
+
 # ECG parameters
 

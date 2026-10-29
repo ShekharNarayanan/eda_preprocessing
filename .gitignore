@@ -6,11 +6,14 @@ dist/
 wheels/
 *.egg-info
 tests
+AGENTS.md
 
 # Virtual environments
 .venv
+.uv-cache/
 
 # Data Folder
+Acqknowledge/
 input/**
 segmented_data/**
 output/**
