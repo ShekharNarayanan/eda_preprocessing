@@ -40,6 +40,19 @@ PREPROCESSING:
     SMOOTHING_METHOD: "median"
     SMOOTHING_ALIGNMENT: "centered"
     SMOOTHING_EDGE: "shrink"
+    FIR_FILTER_TYPE: "lowpass"
+    FIR_CUTOFF_HZ: 1.0
+    FIR_WINDOW: "hamming"
+    FIR_COEFFICIENT_MODE: "optimized"
+    FIR_NUM_TAPS: null  # used only in fixed mode; an odd count of at least 3
+    FIR_OPTIMIZED_FACTOR: 4.0  # ceil(factor * target rate / cutoff), increased to odd
+    FIR_SCALE: true  # unity gain at DC for lowpass, Nyquist for highpass
+    FIR_DELAY_COMPENSATION: true
+    FIR_EDGE: "reflect"
+
+# Display only; the complete supplied signal is processed before plotting.
+PREPROCESSING_CHARTS:
+    ZOOM_WINDOWS_MIN: [[0.0, 0.5]]
 
 # ECG parameters
 

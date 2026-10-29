@@ -1,5 +1,5 @@
 """
-Resample and smooth one complete supplied EDA signal without selecting a crop.
+Resample, smooth, and FIR-filter a complete EDA signal without selecting a crop.
 
 AcqKnowledge's serialized option codes and endpoint behavior remain unverified.
 Callers choose interpolation, smoothing, alignment, and edges explicitly; these
@@ -7,11 +7,15 @@ functions do not interpret workflow codes or load configuration or recordings.
 """
 
 from fractions import Fraction
+from math import ceil
 from numbers import Real
 
 import numpy as np
 import pandas as pd
 from scipy.interpolate import CubicSpline
+from scipy.signal import firwin, oaconvolve
+
+from src.common.signal_plot_utils import plot_preprocessing
 
 
 def validate_signal(signal):
@@ -217,3 +221,240 @@ def smooth_signal(signal, window_samples=100, *, method, alignment, edge):
     if edge == "nearest":
         smoothed = smoothed.iloc[window_samples - 1:]
     return pd.Series(smoothed.to_numpy(copy=True), index=signal.index.copy(), name=signal.name)
+
+
+def design_fir_filter(
+    cutoff_hz, fs=2000, *, filter_type="lowpass", window="hamming",
+    coefficient_mode="optimized", num_taps=None, optimized_factor=4.0, scale=True,
+):
+    """
+    Construct an odd-length, symmetric FIR filter using a windowed sinc.
+
+    Parameters
+    ----------
+    cutoff_hz : number
+        Half-amplitude (-6 dB) cutoff in Hz, strictly between 0 and fs / 2.
+    fs : number
+        Sampling rate of the signal to filter in Hz (default 2000).
+    filter_type : {"lowpass", "highpass"}
+        Frequencies to retain. Highpass uses spectral inversion.
+    window : {"hamming", "hann", "blackman", "boxcar"}
+        Symmetric coefficient window used by scipy.signal.firwin.
+    coefficient_mode : {"optimized", "fixed"}
+        Optimized estimates ceil(optimized_factor * fs / cutoff_hz), then
+        increases an even result to odd, with a minimum of 3 coefficients.
+        This explicit estimate is not a verified AcqKnowledge mode mapping.
+    num_taps : int or None
+        Coefficient count in fixed mode, an odd integer of at least 3. Ignored
+        in optimized mode; the workflow's stored count of 39 is not assumed.
+    optimized_factor : number
+        Positive multiplier for the optimized estimate (default 4).
+    scale : bool
+        Normalize gain to unity at DC for lowpass or Nyquist for highpass.
+        False retains the unnormalized windowed-sinc coefficients.
+
+    Returns
+    -------
+    coefficients : pandas.Series
+        Coefficients indexed by integer tap position, named coefficient.
+    metadata : dict
+        Active design settings, actual num_taps, and group_delay_samples.
+        Odd lengths give an integer delay, avoiding fractional sample shifts.
+        Counts are not shortened to fit a short supplied trial.
+    """
+    fs = _validate_sampling_rate(fs, "fs")
+    if isinstance(cutoff_hz, (bool, np.bool_)) or not isinstance(cutoff_hz, Real):
+        raise TypeError("cutoff_hz must be a finite frequency between 0 and fs / 2.")
+    cutoff_hz = float(cutoff_hz)
+    if not np.isfinite(cutoff_hz) or not 0 < cutoff_hz < fs / 2:
+        raise ValueError("cutoff_hz must be a finite frequency between 0 and fs / 2.")
+    if filter_type not in ("lowpass", "highpass"):
+        raise ValueError("filter_type must be 'lowpass' or 'highpass'.")
+    if window not in ("hamming", "hann", "blackman", "boxcar"):
+        raise ValueError("window must be 'hamming', 'hann', 'blackman', or 'boxcar'.")
+    if coefficient_mode not in ("optimized", "fixed"):
+        raise ValueError("coefficient_mode must be 'optimized' or 'fixed'.")
+    if not isinstance(scale, (bool, np.bool_)):
+        raise TypeError("scale must be a boolean.")
+
+    # Keep the effective count explicit rather than reading inactive workflow fields.
+    if coefficient_mode == "optimized":
+        if (
+            isinstance(optimized_factor, (bool, np.bool_))
+            or not isinstance(optimized_factor, Real)
+            or not np.isfinite(optimized_factor)
+            or optimized_factor <= 0
+        ):
+            raise ValueError("optimized_factor must be a positive finite number.")
+        estimate = optimized_factor * fs / cutoff_hz
+        if not np.isfinite(estimate):
+            raise ValueError("The optimized FIR coefficient count is not finite.")
+        num_taps = max(3, ceil(estimate))
+        num_taps += (num_taps % 2 == 0)
+    if isinstance(num_taps, (bool, np.bool_)) or not isinstance(num_taps, (int, np.integer)):
+        raise TypeError("num_taps must be an odd integer of at least 3 in fixed mode.")
+    if num_taps < 3 or num_taps % 2 == 0:
+        raise ValueError("num_taps must be an odd integer of at least 3.")
+
+    coefficients = pd.Series(
+        firwin(num_taps, cutoff_hz, fs=fs, window=window, pass_zero=filter_type, scale=scale),
+        index=pd.RangeIndex(num_taps, name="tap"),
+        name="coefficient",
+    )
+    metadata = {
+        "fs": fs,
+        "filter_type": filter_type,
+        "cutoff_hz": cutoff_hz,
+        "window": window,
+        "coefficient_mode": coefficient_mode,
+        "optimized_factor": optimized_factor if coefficient_mode == "optimized" else None,
+        "num_taps": int(num_taps),
+        "scale": bool(scale),
+        "group_delay_samples": (num_taps - 1) // 2,
+    }
+    return coefficients, metadata
+
+
+def filter_signal(
+    signal, cutoff_hz, fs=2000, *, filter_type="lowpass", window="hamming",
+    coefficient_mode="optimized", num_taps=None, optimized_factor=4.0,
+    scale=True, delay_compensation=True, edge="reflect",
+):
+    """
+    Apply one FIR pass with explicit padding and integer delay compensation.
+
+    Parameters
+    ----------
+    signal : pandas.Series
+        Finite real samples with a contiguous integer sample index. Filter
+        the complete supplied signal in its input units. A trial can start
+        at a nonzero recording position; the index and name are preserved.
+    cutoff_hz, fs, filter_type, window, coefficient_mode, num_taps, optimized_factor, scale
+        Filter design arguments described by design_fir_filter. Use the
+        resampled rate as fs when filtering a resampled signal.
+    delay_compensation : bool
+        True centers the symmetric kernel, removing its group delay in one
+        pass. False applies a causal convolution, retaining the group delay
+        on the unchanged sample grid. No forward/backward filtering is used.
+    edge : {"reflect", "nearest", "zero"}
+        Reflect mirrors samples without repeating the endpoint. Nearest
+        repeats the endpoint; zero pads with zeros. Reflection repeats as
+        needed for short signals; a single sample reflects as a constant.
+
+    Returns
+    -------
+    filtered : pandas.Series
+        Independent float64 result with the same sample index and length.
+        Empty inputs return an empty copy, after validating the settings.
+    metadata : dict
+        Design settings and coefficients, padding on both sides in samples,
+        and remaining delay in samples and seconds. Padding uses only the
+        supplied signal, so filtering a trial can differ from slicing a
+        continuously filtered recording. FFT convolution introduces normal
+        floating-point roundoff. AcqKnowledge parity remains unverified.
+    """
+    signal = validate_signal(signal)
+    coefficients, metadata = design_fir_filter(
+        cutoff_hz, fs=fs, filter_type=filter_type, window=window,
+        coefficient_mode=coefficient_mode, num_taps=num_taps,
+        optimized_factor=optimized_factor, scale=scale,
+    )
+    if not isinstance(delay_compensation, (bool, np.bool_)):
+        raise TypeError("delay_compensation must be a boolean.")
+    if edge not in ("reflect", "nearest", "zero"):
+        raise ValueError("edge must be 'reflect', 'nearest', or 'zero'.")
+
+    # Center one pass to remove delay without squaring the magnitude response.
+    delay_samples = metadata["group_delay_samples"]
+    before = delay_samples if delay_compensation else len(coefficients) - 1
+    after = delay_samples if delay_compensation else 0
+    remaining_delay_samples = 0 if delay_compensation else delay_samples
+    metadata.update({
+        "coefficients": coefficients,
+        "delay_compensation": bool(delay_compensation),
+        "edge": edge,
+        "padding_before_samples": before,
+        "padding_after_samples": after,
+        "remaining_delay_samples": remaining_delay_samples,
+        "remaining_delay_s": remaining_delay_samples / metadata["fs"],
+    })
+    if signal.empty:
+        return signal, metadata
+
+    padding_mode = {"reflect": "reflect", "nearest": "edge", "zero": "constant"}[edge]
+    padded = np.pad(signal.to_numpy(), (before, after), mode=padding_mode)
+    filtered = oaconvolve(padded, coefficients.to_numpy(), mode="valid")
+    return pd.Series(filtered, index=signal.index.copy(), name=signal.name), metadata
+
+
+def preprocess_signal(
+    signal, target_fs, fs=2000, *, resampling_method="linear",
+    smoothing_window_samples=100, smoothing_method="median",
+    smoothing_alignment="centered", smoothing_edge="shrink",
+    fir_cutoff_hz=1.0, fir_filter_type="lowpass", fir_window="hamming",
+    fir_coefficient_mode="optimized", fir_num_taps=None, fir_optimized_factor=4.0,
+    fir_scale=True, fir_delay_compensation=True, fir_edge="reflect",
+):
+    """
+    Resample, smooth, and FIR-filter a complete signal, retaining every step.
+
+    Parameters
+    ----------
+    signal : pandas.Series
+        EDA in microsiemens, with contiguous original recording sample indices.
+    target_fs : number
+        Sampling rate in Hz for resampling, smoothing, and FIR filtering.
+    fs : number
+        Original sampling rate in Hz (default 2000).
+    resampling_method, smoothing_window_samples, smoothing_method, smoothing_alignment, smoothing_edge
+        Arguments for resample_signal and smooth_signal. Window width is in
+        samples at target_fs. No anti-alias filter precedes resampling.
+    fir_cutoff_hz, fir_filter_type, fir_window, fir_coefficient_mode, fir_num_taps, fir_optimized_factor
+        Filter design arguments for filter_signal, evaluated at target_fs.
+    fir_scale, fir_delay_compensation, fir_edge
+        Gain normalization, delay, and endpoint choices for filter_signal.
+
+    Returns
+    -------
+    dict
+        signals contains independent raw, resampled, smoothed, and filtered
+        Series. raw_time_s gives original recording seconds. timeline maps
+        all three processed signals to source_sample and time_s, including
+        nonzero origins. metadata records sampling rates, sample counts,
+        resampling and smoothing settings, and full FIR metadata. Empty
+        inputs retain every signal and timeline schema. No crop is applied,
+        and neither files nor configuration are read or written here.
+    """
+    raw = validate_signal(signal)
+    fs = _validate_sampling_rate(fs, "fs")
+    target_fs = _validate_sampling_rate(target_fs, "target_fs")
+    resampled, timeline = resample_signal(raw, target_fs, fs=fs, method=resampling_method)
+    smoothed = smooth_signal(
+        resampled, window_samples=smoothing_window_samples, method=smoothing_method,
+        alignment=smoothing_alignment, edge=smoothing_edge,
+    )
+    filtered, fir_metadata = filter_signal(
+        smoothed, fir_cutoff_hz, fs=target_fs, filter_type=fir_filter_type,
+        window=fir_window, coefficient_mode=fir_coefficient_mode,
+        num_taps=fir_num_taps, optimized_factor=fir_optimized_factor,
+        scale=fir_scale, delay_compensation=fir_delay_compensation, edge=fir_edge,
+    )
+    return {
+        "signals": {"raw": raw, "resampled": resampled, "smoothed": smoothed, "filtered": filtered},
+        "raw_time_s": pd.Series(raw.index.to_numpy(dtype=float) / fs, index=raw.index),
+        "timeline": timeline,
+        "metadata": {
+            "original_fs": fs,
+            "processed_fs": target_fs,
+            "input_samples": len(raw),
+            "output_samples": len(filtered),
+            "resampling": {"method": resampling_method},
+            "smoothing": {
+                "window_samples": smoothing_window_samples,
+                "method": smoothing_method,
+                "alignment": smoothing_alignment,
+                "edge": smoothing_edge,
+            },
+            "fir": fir_metadata,
+        },
+    }
