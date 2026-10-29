@@ -47,6 +47,35 @@ def build_preprocessing_steps(result):
     }
 
 
+def build_analysis_steps(result):
+    """
+    Pair baseline and phasic signals with their exact recording seconds.
+
+    Parameters
+    ----------
+    result : dict
+        Output of analyze_signal, including signals, timeline, and metadata.
+
+    Returns
+    -------
+    dict
+        Two labelled (signal, time_s) pairs for extending a preprocessing
+        overlay. Labels include the active baseline settings. No samples are
+        copied or cropped; empty results retain both labelled traces.
+    """
+    settings = result["metadata"]["phasic"]
+    description = (
+        f"median; {settings['baseline_window_s']:g} s, "
+        f"{settings['baseline_window_samples']} samples; "
+        f"{settings['baseline_alignment']}; {settings['baseline_edge']} edges"
+    )
+    time_s = result["timeline"]["time_s"]
+    return {
+        f"Estimated baseline ({description})": (result["signals"]["baseline"], time_s),
+        f"Phasic (filtered − estimated baseline; {description})": (result["signals"]["phasic"], time_s),
+    }
+
+
 def _validate_steps(steps):
     """
     Validate signal/time pairs before creating any figure.
@@ -107,7 +136,7 @@ def set_time_range(fig, time_range_min, rescale_y=True):
     Parameters
     ----------
     fig : matplotlib.figure.Figure
-        A figure from plot_signal_steps or plot_preprocessing.
+        A figure from plot_signal_steps, plot_preprocessing, or plot_analysis.
     time_range_min : pair of numbers
         Finite, increasing recording-minute limits. Interactive pan retains
         the complete signal, including samples outside the displayed span.
@@ -279,6 +308,83 @@ def plot_preprocessing(
         axes[-1].set_ylabel("Difference (µS)")
         axes[-1].legend(loc="lower left", bbox_to_anchor=(0, 1.02), borderaxespad=0, fontsize=9)
 
+    axes[-1].set_xlabel("Recording time (min)")
+    if time_range_min is not None:
+        set_time_range(fig, time_range_min)
+    fig.suptitle(title)
+    fig.tight_layout()
+    return fig
+
+
+def plot_analysis(result, title="EDA phasic derivation and SCR detection", *, time_range_min=None):
+    """
+    Show baseline removal and SCR decisions on linked filtered/phasic panels.
+
+    Parameters
+    ----------
+    result : dict
+        Output of analyze_signal. SCR onset/peak/end are integer positions on
+        its signal index; timeline.time_s gives exact recording seconds.
+        Accepted and rejected candidates retain separate event markers.
+    title : str
+        Figure title, normally identifying the participant or supplied trial.
+    time_range_min : pair of numbers or None
+        Display-only recording-minute limits. All samples remain available
+        for interactive zoom and pan; None shows the complete supplied span.
+
+    Returns
+    -------
+    matplotlib.figure.Figure
+        Two linked panels with legends naming the baseline settings,
+        detection/rejection thresholds, and onset/peak/end decisions.
+        Incomplete responses show only observed event positions and are
+        labelled with their rejection reason. Empty signals and event tables
+        are valid. This function neither saves nor displays the figure.
+    """
+    time_s = result["timeline"]["time_s"]
+    steps = {"Filtered EDA": (result["signals"]["filtered"], time_s)}
+    steps.update(build_analysis_steps(result))
+    _validate_steps(steps)
+    _validate_time_range(time_range_min)
+    scrs = result["scrs"]
+    settings = result["metadata"]["scr"]
+    fig, axes = plt.subplots(2, 1, figsize=(14, 10), sharex=True)
+    positions = {label: position for position, label in enumerate(steps)}
+    labels = list(steps)
+    _draw_signal_steps(axes[0], {label: steps[label] for label in labels[:2]}, positions)
+    _draw_signal_steps(axes[1], {labels[-1]: steps[labels[-1]]}, positions)
+    axes[1].set_ylabel("Phasic EDA (µS)")
+    axes[1].axhline(0, color="0.5", linewidth=0.7)
+    axes[1].axhline(
+        settings["threshold_us"], color="tab:orange", linestyle="--", linewidth=0.8,
+        label=f"Detection H = {settings['threshold_us']:g} µS (onset > H)",
+    )
+    axes[1].axhline(
+        settings["rejection_threshold_us"], color="tab:red", linestyle=":", linewidth=0.8,
+        label=(f"Rejection = {settings['rejection_pct']:g}% of phasic max "
+               f"= {settings['rejection_threshold_us']:g} µS"),
+    )
+
+    # Vectorized marker groups preserve event positions without creating an
+    # artist for every response. Peak markers use the FILTERED EDA maximum.
+    for (status, reason), group in scrs.groupby(["status", "rejection_reason"], sort=False):
+        description = "Accepted SCR" if status == "accepted" else f"Rejected ({reason.replace('_', ' ')})"
+        colour = "tab:green" if status == "accepted" else "tab:red"
+        for event, marker in (("onset", "o"), ("peak", "^"), ("end", "v")):
+            samples = group[event].dropna().astype(int)
+            if samples.empty:
+                continue
+            for ax, signal_name in zip(axes, ("filtered", "phasic")):
+                ax.plot(
+                    time_s.loc[samples].to_numpy() / 60,
+                    result["signals"][signal_name].loc[samples].to_numpy(),
+                    linestyle="none", marker=marker, markersize=5,
+                    markerfacecolor="none" if status == "rejected" else colour,
+                    markeredgecolor=colour, label=f"{description}: {event}",
+                )
+
+    for ax in axes:
+        ax.legend(loc="lower center", bbox_to_anchor=(0.5, 1.02), fontsize=8, ncol=3)
     axes[-1].set_xlabel("Recording time (min)")
     if time_range_min is not None:
         set_time_range(fig, time_range_min)

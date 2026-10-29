@@ -30,7 +30,7 @@ EDA_DOWNSAMPLE          : 100   # target sampling rate after downsampling (Hz)
 # downsampling approach: https://www.researchgate.net/publication/228888313_Using_skin_conductance_in_judgment_and_decision_making_research
 SCR_DETECTION_THRESHOLD : 0.03 # micro siemens
 
-# Shared signal-processing settings, currently used by preprocessing_charts.py.
+# EDA preprocessing settings used by run_preprocessing.py.
 # These are explicit calibration choices; the AcqKnowledge option codes and
 # edge behavior remain unverified.
 PREPROCESSING:
@@ -53,6 +53,20 @@ PREPROCESSING:
 
 # Display only, used with --preview_for_participant; the complete signal is processed.
 PREPROCESSING_CHARTS:
+    ZOOM_WINDOWS_MIN: [[0.0, 0.5]]
+
+# Phasic/SCR analysis settings used by run_analysis.py.
+# Independent AcqKnowledge exports are still needed.
+ANALYSIS:
+    PHASIC_METHOD: "median_baseline"  # explicit choice; workflow method code is unverified
+    PHASIC_BASELINE_WINDOW_S: 5.0  # seconds; width * signal sampling rate must be a whole sample count
+    PHASIC_BASELINE_ALIGNMENT: "centered"
+    PHASIC_BASELINE_EDGE: "shrink"
+    SCR_THRESHOLD_US: 0.01  # phasic onset must be strictly above this level in µS
+    SCR_REJECTION_PCT: 10.0  # percentage of the maximum phasic value among complete candidates
+
+# Display only, used by run_analysis.py --preview_for_participant.
+ANALYSIS_CHARTS:
     ZOOM_WINDOWS_MIN: [[0.0, 0.5]]
 
 # ECG parameters
