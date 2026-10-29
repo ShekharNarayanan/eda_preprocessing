@@ -360,37 +360,12 @@ This reads the segmented parquet files and writes the baseline table and timelin
 
 ## 6. Signal preprocessing
 
-Import the helpers without running segmentation or reading any recordings.
-Supply a complete trial as a finite numeric pandas Series, keeping its
-contiguous integer recording index, and pass its sampling rate as `fs`.
-The workflow's **Change Selected Area** action is ignored: processing and
-analysis cover the entire supplied trial. These helpers do not identify trial
-boundaries or crop signals.
+Signal preprocessing uses settings loaded from `config.yaml`. The shared `PREPROCESSING` section in `config.yaml` controls the EDA column, target rate, interpolation method, smoothing width, method, alignment, and edges. The smoothing window is measured in samples after resampling, so 100 samples at 1000 Hz cover 0.1 seconds.
 
-The example below uses the shared `PREPROCESSING` settings loaded from
-`config.yaml`. The defaults use linear interpolation and median smoothing with
-centered, shrinking windows. These are explicit calibration choices: the stored
-workflow codes and AcqKnowledge's endpoint, even-window, and edge behavior still
-need independent calibration exports. No AcqKnowledge waveform parity is claimed
-yet.
+### Resampling
 
-```python
-import src.preprocessing.signal_preprocessing as signal_preprocessing
-
-# config is loaded from config.yaml; trial_eda is the complete trial.
-settings = config["PREPROCESSING"]
-fs = config["SAMPLING_RATE"]
-resampled, timeline = signal_preprocessing.resample_signal(
-    trial_eda, target_fs=settings["TARGET_SAMPLING_RATE"], fs=fs,
-    method=settings["RESAMPLING_METHOD"],
-)
-smoothed = signal_preprocessing.smooth_signal(
-    resampled, window_samples=settings["SMOOTHING_WINDOW_SAMPLES"],
-    method=settings["SMOOTHING_METHOD"],
-    alignment=settings["SMOOTHING_ALIGNMENT"],
-    edge=settings["SMOOTHING_EDGE"],
-)
-```
+The defaults use linear interpolation and median smoothing with
+centered, shrinking windows and still need to be verified.
 
 Resampling anchors the new grid at the first supplied sample. With `N` input
 samples, it returns `floor((N - 1) * target_fs / fs) + 1` samples, stopping at
@@ -403,6 +378,8 @@ an output sample counter; `timeline.source_sample` holds its original recording
 positions, including fractional positions and nonzero trial origins.
 `timeline.time_s` is recording time in seconds. At the same rate, the original
 index is preserved. Empty inputs retain the output schema.
+
+### Smoothing
 
 Smoothing accepts `mean` or `median`, `centered` or `trailing` alignment, and
 `shrink` or `nearest` edges. A centered width of 100 uses positions `i - 50`
@@ -420,18 +397,7 @@ Run the dedicated inspection script from the repository root:
 uv run python -m preprocessing_charts --participant 149
 ```
 
-It reads the EDA channel from `clean_149.parquet` under `SEGMENTED_DIR`, processes
-the complete supplied recording, and saves
-`OUTPUT_DIR/preprocessing_charts/preprocessing_149.png`. Processed signals remain
-in memory for plotting; the script does not save them or modify the segmented
-recording.
-
-The shared `PREPROCESSING` section in `config.yaml` controls the EDA column,
-target rate, interpolation method, smoothing width, method, alignment, and
-edges. These settings change the signal values and sample grid used in the
-comparison. The smoothing window is measured in samples after resampling, so
-100 samples at 1000 Hz cover 0.1 seconds. Chart appearance is handled by
-`src/common/signal_plot_utils.py`. The defaults remain subject to AcqKnowledge
-calibration.
-
-The plot window supports zoom and pan.
+This reads the EDA channel from `clean_149.parquet` under `SEGMENTED_DIR`, processes
+the complete supplied recording, and shows a preview of the stages of signal preprocessing. The plot window supports zoom and pan. The plots are also exported, to e.g.
+`OUTPUT_DIR/preprocessing_charts/preprocessing_149.png`. This script is for previewing only and does not save them or modify the segmented recording. Chart appearance is handled by
+`src/common/signal_plot_utils.py`.
