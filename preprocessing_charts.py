@@ -5,6 +5,8 @@ Run from the repository root, for example:
     uv run python -m preprocessing_charts --participant 149
 
 The complete supplied recording is processed, without a selected-area crop.
+Signal processing uses the shared PREPROCESSING settings in config.yaml.
+Only the chart is saved; processed signals remain in memory.
 Trial extraction and analysis runners remain separate work.
 """
 
@@ -31,7 +33,7 @@ if __name__ == "__main__":
     with config_path.open(encoding="utf-8") as source:
         config = yaml.safe_load(source)
 
-    settings = config["PREPROCESSING_CHARTS"]
+    settings = config["PREPROCESSING"]
     fs = config["SAMPLING_RATE"]
     target_fs = settings["TARGET_SAMPLING_RATE"]
     output_dir = Path(config["OUTPUT_DIR"]) / "preprocessing_charts"
