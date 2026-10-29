@@ -47,7 +47,7 @@ def get_participant_id(path):
 
 def get_participant_id_from_parquet(path):
     """
-    Extract the participant identifier from a prepared parquet file name.
+    Extract the participant identifier from a segmented parquet file name.
 
     These files are named 'clean_<participant_id>.parquet', so the
     identifier is whatever follows the 'clean_' prefix.
@@ -66,7 +66,7 @@ def get_participant_id_from_parquet(path):
     """
     stem = Path(path).stem
     if not stem.startswith("clean_"):
-        raise ValueError(f"Not a prepared parquet file name: {path}")
+        raise ValueError(f"Not a segmented parquet file name: {path}")
     return stem.replace("clean_", "", 1)
 
 
@@ -112,35 +112,35 @@ def get_participant_number(participant_id):
     return int(participant_id.split("_")[0])
 
 
-def get_prepared_files(prepared_dir):
+def get_segmented_files(segmented_dir):
     """
-    Return all prepared parquet files found in the given folder, in
+    Return all segmented parquet files found in the given folder, in
     participant order.
 
-    These are the files written by prepare_data.py, named using the
+    These are the files written by run_segmentation.py, named using the
     'clean_<participant_id>.parquet' pattern.
 
     Parameters
     ----------
-    prepared_dir : str or Path
-        Path to the folder containing the prepared parquet files
+    segmented_dir : str or Path
+        Path to the folder containing the segmented parquet files
 
     Returns
     -------
-    list of Path objects, one per prepared file found
+    list of Path objects, one per segmented file found
     """
-    prepared_files = list(Path(prepared_dir).glob("clean_*.parquet"))
+    segmented_files = list(Path(segmented_dir).glob("clean_*.parquet"))
 
     def sort_key_for_file(path):
         participant_id = get_participant_id_from_parquet(path)
         return get_sort_key(participant_id)
 
-    return sorted(prepared_files, key=sort_key_for_file)
+    return sorted(segmented_files, key=sort_key_for_file)
 
 
-def read_prepared_file(path, columns=None):
+def read_segmented_file(path, columns=None):
     """
-    Read a prepared parquet file back into a dataframe.
+    Read a segmented parquet file back into a dataframe.
 
     Passing a list of column names reads only those columns, which matters
     for these recordings: reading just the trigger column avoids loading
@@ -163,9 +163,9 @@ def read_prepared_file(path, columns=None):
     return df
 
 
-def save_prepared_file(clean_df, prepared_dir, participant_id):
+def save_segmented_file(clean_df, segmented_dir, participant_id):
     """
-    Write one participant's cleaned dataframe to the prepared folder.
+    Write one participant's cleaned dataframe to the segmented folder.
 
     The naming pattern 'clean_<participant_id>.parquet' is defined here and
     read back by get_participant_id_from_parquet, so the two stay together.
@@ -173,14 +173,14 @@ def save_prepared_file(clean_df, prepared_dir, participant_id):
     Parameters
     ----------
     clean_df       : the cleaned dataframe to save
-    prepared_dir   : str or Path to the folder to write into
+    segmented_dir  : str or Path to the folder to write into
     participant_id : str, used to build the file name
 
     Returns
     -------
     The Path the file was written to.
     """
-    out_path = Path(prepared_dir) / f"clean_{participant_id}.parquet"
+    out_path = Path(segmented_dir) / f"clean_{participant_id}.parquet"
     clean_df.to_parquet(out_path)
     return out_path
 

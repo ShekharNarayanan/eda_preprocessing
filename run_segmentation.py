@@ -4,9 +4,9 @@ import pandas as pd
 from pathlib import Path
 
 import src.common.file_utils as file_utils
-import src.preparation.trigger_codebook as trigger_codebook
-import src.preparation.build_trigger_data as build_trigger_data
-import src.preparation.summarize_data as summarize_data
+import src.segmentation.trigger_codebook as trigger_codebook
+import src.segmentation.build_trigger_data as build_trigger_data
+import src.segmentation.summarize_data as summarize_data
 import src.common.report_utils as report_utils
 
 # Load the config file from the same folder as this script.
@@ -17,10 +17,10 @@ with open(config_path) as f:
     config = yaml.safe_load(f)
 
 # Make sure the folder for cleaned data exists before we start writing to it.
-prepared_dir = Path(config["PREPARED_DIR"])
-prepared_dir.mkdir(parents=True, exist_ok=True)
+segmented_dir = Path(config["SEGMENTED_DIR"])
+segmented_dir.mkdir(parents=True, exist_ok=True)
 
-report_path = prepared_dir / "report.xlsx"
+report_path = segmented_dir / "report.xlsx"
 
 # Find every .acq recording in the input folder.
 print("Found all .acq files in the input folder")
@@ -28,31 +28,31 @@ acq_files = file_utils.get_acq_files(config["INPUT_DIR"])
 
 # Read whatever the report already holds. On a first run this comes back as
 # empty tables. Everything collected below is added to these, so a run that
-# only prepares one new participant keeps the rows of all the earlier ones.
+# only segments one new participant keeps the rows of all the earlier ones.
 print("Checking if there is already a report present ")
-sheets       = report_utils.read_report(report_path)
-prepared_ids = report_utils.get_prepared_participant_ids(sheets)
-if prepared_ids:
+sheets        = report_utils.read_report(report_path)
+segmented_ids = report_utils.get_segmented_participant_ids(sheets)
+if segmented_ids:
     print("report present.")
 else:
-    print("report not present. preparing all participants.")
-# A participant already in the report has been prepared before, so their
+    print("report not present. segmenting all participants.")
+# A participant already in the report has been segmented before, so their
 # recording is not read again. Delete their row from the report to force them
-# to be prepared afresh.
-files_to_prepare = [p for p in acq_files
-                    if file_utils.get_participant_id(p) not in prepared_ids]
+# to be segmented afresh.
+files_to_segment = [p for p in acq_files
+                    if file_utils.get_participant_id(p) not in segmented_ids]
 
-if not files_to_prepare:
+if not files_to_segment:
     print(f"All {len(acq_files)} participants are already in the report, nothing to do.")
     raise SystemExit
 
-new_participant_ids = [file_utils.get_participant_id(p) for p in files_to_prepare]
-print(f"Preparing data for new participant: "
+new_participant_ids = [file_utils.get_participant_id(p) for p in files_to_segment]
+print(f"Segmenting data for new participant: "
       f"{', '.join(new_participant_ids)}")
 
 
 # Process each participant one at a time.
-for path in files_to_prepare:
+for path in files_to_segment:
     # The participant ID is encoded in the filename. Even and odd IDs
     # belong to different experimental versions (A and B) with different
     # trigger codebooks, so we need to know which one we're dealing with.
@@ -149,11 +149,11 @@ for path in files_to_prepare:
     })
 
     # Save the cleaned dataframe as parquet.
-    out_path = file_utils.save_prepared_file(clean_df, prepared_dir, participant_id)
+    out_path = file_utils.save_segmented_file(clean_df, segmented_dir, participant_id)
     print(f"Saved -> {out_path}")
 
 
 # Write the report back out, containing both the participants that were
-# already in it and any that were prepared just now.
+# already in it and any that were segmented just now.
 report_utils.write_report(sheets, report_path)
 print(f"\nReport saved -> {report_path}")

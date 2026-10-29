@@ -2,7 +2,7 @@
 
 # Data paths
 INPUT_DIR  : 'input'
-PREPARED_DIR: 'prepared_data'
+SEGMENTED_DIR: 'segmented_data'
 OUTPUT_DIR : 'output'
 
 # Recording
@@ -24,10 +24,35 @@ TRIGGER_COLS : [
     "Lure",
 ]
 
-# EDA parameters
+# Reserved for later EDA downsampling and SCR detection; currently unused.
 EDA_DOWNSAMPLE          : 100   # target sampling rate after downsampling (Hz)
 # downsampling approach: https://www.researchgate.net/publication/228888313_Using_skin_conductance_in_judgment_and_decision_making_research
 SCR_DETECTION_THRESHOLD : 0.03 # micro siemens
+
+# Shared signal-processing settings, currently used by preprocessing_charts.py.
+# These are explicit calibration choices; the AcqKnowledge option codes and
+# edge behavior remain unverified.
+PREPROCESSING:
+    EDA_COLUMN: "EDA - EDA, Y, PPGED-R"
+    TARGET_SAMPLING_RATE: 1000
+    RESAMPLING_METHOD: "linear"
+    SMOOTHING_WINDOW_SAMPLES: 100  # samples at TARGET_SAMPLING_RATE (0.1 s at 1000 Hz)
+    SMOOTHING_METHOD: "median"
+    SMOOTHING_ALIGNMENT: "centered"
+    SMOOTHING_EDGE: "shrink"
+    FIR_FILTER_TYPE: "lowpass"
+    FIR_CUTOFF_HZ: 1.0
+    FIR_WINDOW: "hamming"
+    FIR_COEFFICIENT_MODE: "optimized"
+    FIR_NUM_TAPS: null  # used only in fixed mode; an odd count of at least 3
+    FIR_OPTIMIZED_FACTOR: 4.0  # ceil(factor * target rate / cutoff), increased to odd
+    FIR_SCALE: true  # unity gain at DC for lowpass, Nyquist for highpass
+    FIR_DELAY_COMPENSATION: true
+    FIR_EDGE: "reflect"
+
+# Display only; the complete supplied signal is processed before plotting.
+PREPROCESSING_CHARTS:
+    ZOOM_WINDOWS_MIN: [[0.0, 0.5]]
 
 # ECG parameters
 

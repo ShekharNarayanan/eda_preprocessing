@@ -5,16 +5,20 @@ build/
 dist/
 wheels/
 *.egg-info
+tests
+AGENTS.md
 
 # Virtual environments
 .venv
+.uv-cache/
 
 # Data Folder
+Acqknowledge/
 input/**
-prepared_data/**
+segmented_data/**
 output/**
 
 # keep gitkeep files
 !output/.gitkeep
 !input/.gitkeep
-!prepared_data/.gitkeep
+!segmented_data/.gitkeep

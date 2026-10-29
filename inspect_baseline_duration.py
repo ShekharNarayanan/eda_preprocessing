@@ -13,9 +13,9 @@ config_path = root / "config.yaml"
 with open(config_path) as f:
     config = yaml.safe_load(f)
 
-fs           = config["SAMPLING_RATE"]
-prepared_dir = Path(config["PREPARED_DIR"])
-output_dir   = Path(config["OUTPUT_DIR"])
+fs            = config["SAMPLING_RATE"]
+segmented_dir = Path(config["SEGMENTED_DIR"])
+output_dir    = Path(config["OUTPUT_DIR"])
 output_dir.mkdir(parents=True, exist_ok=True)
 
 # Periods shorter than this are drawn at this width so that they stay visible
@@ -23,11 +23,11 @@ output_dir.mkdir(parents=True, exist_ok=True)
 # printed under the plot always describe the same thing.
 MIN_BAR_MIN = 0.1
 
-# Find every prepared parquet file. They come back already in participant order.
-parquet_files = file_utils.get_prepared_files(prepared_dir)
+# Find every segmented parquet file. They come back already in participant order.
+parquet_files = file_utils.get_segmented_files(segmented_dir)
 
 if not parquet_files:
-    raise FileNotFoundError(f"No clean_*.parquet files found in {prepared_dir}")
+    raise FileNotFoundError(f"No clean_*.parquet files found in {segmented_dir}")
 
 # Collectors for the plot and the summary table.
 bars_per_participant          = {}
@@ -43,7 +43,7 @@ for path in parquet_files:
 
     # Only the trigger column is needed here, so the much larger EDA and ECG
     # columns are never loaded into memory.
-    trigger = file_utils.read_prepared_file(path, columns=["trigger"])["trigger"]
+    trigger = file_utils.read_segmented_file(path, columns=["trigger"])["trigger"]
 
     recording_lengths_min.append(len(trigger) / (fs * 60))
 
