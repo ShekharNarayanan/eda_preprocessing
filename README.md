@@ -22,7 +22,7 @@ A Python pipeline for cleaning and segmenting physiological data recorded during
   - [5.1 Clone the repository](#51-clone-the-repository)
   - [5.2 Install dependencies](#52-install-dependencies)
   - [5.3 Run the pipeline](#53-run-the-pipeline)
-- [6. Next steps](#6-next-steps)
+- [6. Signal preprocessing](#6-signal-preprocessing)
 
 ---
 
@@ -46,17 +46,20 @@ The end goal of this project is to analyze the EDA and ECG signals condition by 
 ├── config.yaml                      Pipeline parameters (paths, sampling rate, etc.)
 ├── run_segmentation.py              Step 1: raw .acq files to labelled parquet
 ├── inspect_baseline_duration.py     Step 2: check the baseline period per participant
+├── preprocessing_charts.py          Export overlays of all available EDA processing steps
 └── src/
     ├── common/                      Used by more than one stage
     │   ├── file_utils.py            Finding, naming, reading and writing files
     │   ├── trial_boundaries.py      Finding where periods start and end
     │   ├── report_utils.py          Reading and writing the Excel report
-    │   └── baseline_plot_utils.py   Drawing the baseline timeline
+    │   ├── baseline_plot_utils.py   Drawing the baseline timeline
+    │   └── signal_plot_utils.py     Superimposing named signal steps
     ├── segmentation/                Used by the segmentation stage only
     │   ├── trigger_codebook.py      The two codebooks and their trigger masks
     │   ├── build_trigger_data.py    Turning 8 pin columns into one trigger column
     │   └── summarize_data.py        Read-only summaries for the reports
-    └── preprocessing/               Signal processing, not yet implemented
+    └── preprocessing/               Signal processing
+        └── signal_preprocessing.py  Validation, resampling, and smoothing
 ```
 
 Scripts at the top level are the ones you run. Everything under `src/` is imported by them, grouped by which stage uses it. Modules in `common/` are used by more than one stage, so they do not sit under any single one.
@@ -67,6 +70,7 @@ Scripts at the top level are the ones you run. Everything under `src/` is import
 
 - **`run_segmentation.py`** reads every raw `.acq` recording, collapses the 8 pin columns into a single `trigger` column, labels the pre-experiment period as baseline, and writes one parquet file per participant. It also writes a cross-participant Excel report.
 - **`inspect_baseline_duration.py`** reads the segmented parquet files and reports how much baseline each recording contains, both as a table and as a timeline plot. Run this after `run_segmentation.py`.
+- **`preprocessing_charts.py`** reads one segmented recording, applies the shared `PREPROCESSING` settings, and exports a superimposed view of original EDA and every implemented preprocessing step. See section 6 for configuration and usage.
 
 **Modules in `src/common/`**
 
@@ -74,6 +78,7 @@ Scripts at the top level are the ones you run. Everything under `src/` is import
 - **`trial_boundaries.py`** finds the start and end of every contiguous block in the recording, whether that block is a trial, a baseline period, or an unknown pin combination. It also finds where the first trial begins, which is what the baseline label depends on.
 - **`report_utils.py`** reads the cross-participant Excel report back into dataframes, adds a participant's rows to it, and writes it out again. It is what lets a run segment only the participants that are not in the report yet, without losing the rows of the ones that are.
 - **`baseline_plot_utils.py`** converts a table of periods into timeline bars and draws one row per participant, splitting across several figures when there are too many to fit on one.
+- **`signal_plot_utils.py`** superimposes named signal steps using each step's recording-time mapping and returns a figure with a clear legend.
 
 **Modules in `src/segmentation/`**
 
@@ -85,7 +90,12 @@ These modules all need the 8 pin columns or the trigger map, both of which only 
 
 **`src/preprocessing/`**
 
-Empty for now. The filtering, epoching and downsampling steps described in [section 6](#6-next-steps) will go here.
+`signal_preprocessing.py` validates a signal and provides resampling and moving
+mean/median smoothing functions. Each function processes the complete supplied
+trial. Resampling returns its original recording positions alongside the new
+signal; smoothing preserves the sample index. See [section 6](#6-signal-preprocessing)
+for usage and the remaining AcqKnowledge calibration questions. FIR filtering
+and the analysis functions are still planned.
 
 ### 2.3 Configuration
 
@@ -111,11 +121,32 @@ TRIGGER_COLS:                         # the 8 parallel port pin columns
   - PM
   - Lure
 
-EDA_DOWNSAMPLE: 100                   # target sampling rate after downsampling (Hz)
-SCR_DETECTION_THRESHOLD: 0.03         # microsiemens
+PREPROCESSING:                       # shared signal-processing settings
+    EDA_COLUMN: "EDA - EDA, Y, PPGED-R"
+    TARGET_SAMPLING_RATE: 1000        # Hz, for the initial resampling step
+    RESAMPLING_METHOD: "linear"
+    SMOOTHING_WINDOW_SAMPLES: 100     # samples at the target rate (0.1 s at 1000 Hz)
+    SMOOTHING_METHOD: "median"
+    SMOOTHING_ALIGNMENT: "centered"
+    SMOOTHING_EDGE: "shrink"
+
+# Reserved for later stages; currently unused.
+EDA_DOWNSAMPLE: 100                   # later downsampling target (Hz)
+SCR_DETECTION_THRESHOLD: 0.03         # SCR detection threshold (microsiemens)
+
+ACQKNOWLEDGE_REFERENCE_DIR: 'Acqknowledge'  # local fixtures for optional tests
 ```
 
-`EDA_DOWNSAMPLE` and `SCR_DETECTION_THRESHOLD` are for the preprocessing stage and are not read by either of the scripts that exist so far. The same is true of `ignore_participants` and `no_eda`.
+`PREPROCESSING` controls the signal transformations: channel selection,
+resampling, and smoothing. `preprocessing_charts.py` currently reads these
+settings and passes them to the reusable processing functions; future processing
+runners should use the same section. The helpers accept arguments and do not
+load configuration themselves.
+
+`EDA_DOWNSAMPLE` and `SCR_DETECTION_THRESHOLD` are reserved for later downsampling
+and SCR detection and are not used by any current script. In particular,
+`EDA_DOWNSAMPLE` does not override `PREPROCESSING.TARGET_SAMPLING_RATE`.
+`ignore_participants` and `no_eda` are also currently unused.
 
 ## 3. Data segmentation
 
@@ -290,9 +321,10 @@ cd eda_preprocessing
 This project uses [uv](https://docs.astral.sh/uv/) for environment and dependency management.
 
 ```bash
-uv venv
-uv sync
+uv sync --locked
 ```
+
+`uv sync --locked` creates the environment in `.venv` at the repository root and installs the versions recorded in `uv.lock`. Use `uv run` from this folder to run scripts with that environment. Virtual environments contain machine-specific paths and should be recreated after moving the project.
 
 Main dependencies:
 
@@ -302,6 +334,7 @@ Main dependencies:
 - `pyarrow` for parquet output
 - `openpyxl` for the Excel report
 - `matplotlib` for the diagnostic plots
+- `numpy` and `scipy` for sample grids and interpolation
 
 ### 5.3 Run the pipeline
 
@@ -312,8 +345,7 @@ The two scripts run in order. The second reads what the first wrote.
 Place the raw `.acq` files in the folder named in `config.yaml` under `INPUT_DIR`, then run:
 
 ```bash
-.venv\Scripts\activate
-python -m run_segmentation
+uv run python -m run_segmentation
 ```
 
 This loops through every `.acq` file that is not already in the report, works out whether the participant is odd or even, applies the correct codebook, builds the trigger column, adds the baseline label, and writes a parquet file per participant to `SEGMENTED_DIR` along with `report.xlsx`.
@@ -321,15 +353,85 @@ This loops through every `.acq` file that is not already in the report, works ou
 **Step 2: check the baselines**
 
 ```bash
-python -m inspect_baseline_duration
+uv run python -m inspect_baseline_duration
 ```
 
 This reads the segmented parquet files and writes the baseline table and timeline to `OUTPUT_DIR`.
 
-## 6. Next steps
+## 6. Signal preprocessing
 
-The segmented parquet files are ready for the signal processing stage, which is not yet implemented and will live in `src/preprocessing/`:
+Import the helpers without running segmentation or reading any recordings.
+Supply a complete trial as a finite numeric pandas Series, keeping its
+contiguous integer recording index, and pass its sampling rate as `fs`.
+The workflow's **Change Selected Area** action is ignored: processing and
+analysis cover the entire supplied trial. These helpers do not identify trial
+boundaries or crop signals.
 
-1. Filter the continuous EDA and ECG signals
-2. Epoch around trial onsets using the `trigger` column and the boundaries tables
-3. Downsample for analysis
+The example below uses the shared `PREPROCESSING` settings loaded from
+`config.yaml`. The defaults use linear interpolation and median smoothing with
+centered, shrinking windows. These are explicit calibration choices: the stored
+workflow codes and AcqKnowledge's endpoint, even-window, and edge behavior still
+need independent calibration exports. No AcqKnowledge waveform parity is claimed
+yet.
+
+```python
+import src.preprocessing.signal_preprocessing as signal_preprocessing
+
+# config is loaded from config.yaml; trial_eda is the complete trial.
+settings = config["PREPROCESSING"]
+fs = config["SAMPLING_RATE"]
+resampled, timeline = signal_preprocessing.resample_signal(
+    trial_eda, target_fs=settings["TARGET_SAMPLING_RATE"], fs=fs,
+    method=settings["RESAMPLING_METHOD"],
+)
+smoothed = signal_preprocessing.smooth_signal(
+    resampled, window_samples=settings["SMOOTHING_WINDOW_SAMPLES"],
+    method=settings["SMOOTHING_METHOD"],
+    alignment=settings["SMOOTHING_ALIGNMENT"],
+    edge=settings["SMOOTHING_EDGE"],
+)
+```
+
+Resampling anchors the new grid at the first supplied sample. With `N` input
+samples, it returns `floor((N - 1) * target_fs / fs) + 1` samples, stopping at
+the last grid point at or before the final input sample. It does not stretch
+the time axis, extrapolate, or apply an anti-alias filter. At 2000 → 1000 Hz,
+five input samples yield original positions `[0, 2, 4]`; six also yield
+`[0, 2, 4]`. Interpolation choices are `linear`, `padding` (sample to the left),
+and `cubic_spline` (natural endpoints). At a changed rate, the signal index is
+an output sample counter; `timeline.source_sample` holds its original recording
+positions, including fractional positions and nonzero trial origins.
+`timeline.time_s` is recording time in seconds. At the same rate, the original
+index is preserved. Empty inputs retain the output schema.
+
+Smoothing accepts `mean` or `median`, `centered` or `trailing` alignment, and
+`shrink` or `nearest` edges. A centered width of 100 uses positions `i - 50`
+through `i + 49`, inclusive. Median smoothing averages the central pair for
+even numbers of values. Shrinking edges use only available samples; nearest
+edges repeat the endpoint to fill the window. The output keeps the input
+length, index, name, and units. Both operations return new signals and reject
+missing/infinite values or broken sample timelines.
+
+### Inspect preprocessed signals
+
+Run the dedicated inspection script from the repository root:
+
+```powershell
+uv run python -m preprocessing_charts --participant 149
+```
+
+It reads the EDA channel from `clean_149.parquet` under `SEGMENTED_DIR`, processes
+the complete supplied recording, and saves
+`OUTPUT_DIR/preprocessing_charts/preprocessing_149.png`. Processed signals remain
+in memory for plotting; the script does not save them or modify the segmented
+recording.
+
+The shared `PREPROCESSING` section in `config.yaml` controls the EDA column,
+target rate, interpolation method, smoothing width, method, alignment, and
+edges. These settings change the signal values and sample grid used in the
+comparison. The smoothing window is measured in samples after resampling, so
+100 samples at 1000 Hz cover 0.1 seconds. Chart appearance is handled by
+`src/common/signal_plot_utils.py`. The defaults remain subject to AcqKnowledge
+calibration.
+
+The plot window supports zoom and pan.
