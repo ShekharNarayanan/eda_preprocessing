@@ -458,3 +458,54 @@ def preprocess_signal(
             "fir": fir_metadata,
         },
     }
+
+
+def build_preprocessed_recording(df, result, eda_column):
+    """
+    Replace EDA with its filtered signal and retain segmentation on the new grid.
+
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        Original segmented recording, with eda_column, trigger, and contiguous
+        integer sample positions. Other recorded columns are retained.
+    result : dict
+        Output of preprocess_signal for df[eda_column]. Its timeline defines
+        the processed grid; filtering is continuous across trigger boundaries.
+    eda_column : str
+        Name of the physiological column to replace with filtered EDA.
+
+    Returns
+    -------
+    pandas.DataFrame
+        Independent recording on the processed integer sample index. Trigger
+        labels and other channels use the original sample at or immediately
+        before each processed position, without interpolation or filtering.
+        Labels 0, -1, -2, and positive IDs keep their experimental meanings.
+        At a lower rate, spans shorter than one output interval may disappear.
+        Attributes record the sampling rates in Hz and original starting sample.
+        Empty inputs retain all columns and return an empty recording.
+    """
+    missing = [column for column in (eda_column, "trigger") if column not in df]
+    if missing:
+        raise ValueError(f"Segmented recording is missing required columns: {missing}")
+
+    metadata = result["metadata"]
+    filtered = result["signals"]["filtered"]
+
+    # Reuse exact resampling arithmetic so labels are never blended or rounded
+    # to a different condition, including at fractional source positions.
+    source_samples, _ = resample_signal(
+        pd.Series(df.index.to_numpy(), index=df.index),
+        target_fs=metadata["processed_fs"], fs=metadata["original_fs"],
+        method="padding",
+    )
+    processed_df = df.loc[source_samples.to_numpy(dtype=int)].copy()
+    processed_df.index = filtered.index.copy()
+    processed_df[eda_column] = filtered
+    processed_df.attrs.update({
+        "sampling_rate_hz": metadata["processed_fs"],
+        "source_sampling_rate_hz": metadata["original_fs"],
+        "source_start_sample": int(df.index[0]) if len(df) else None,
+    })
+    return processed_df

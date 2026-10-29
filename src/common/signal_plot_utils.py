@@ -7,6 +7,46 @@ import numpy as np
 import pandas as pd
 
 
+def build_preprocessing_steps(result):
+    """
+    Pair all EDA preprocessing steps with their exact recording-time grids.
+
+    Parameters
+    ----------
+    result : dict
+        Signals, timelines, and metadata returned by preprocess_signal.
+
+    Returns
+    -------
+    dict
+        Ordered descriptive labels mapped to (signal, time_s) Series pairs,
+        suitable for plot_signal_steps and plot_preprocessing. Empty signals
+        retain all four labelled steps. No signal data are copied or cropped.
+    """
+    signals = result["signals"]
+    timeline = result["timeline"]
+    metadata = result["metadata"]
+    smoothing = metadata["smoothing"]
+    fir = metadata["fir"]
+    return {
+        f"Original ({metadata['original_fs']:g} Hz)": (signals["raw"], result["raw_time_s"]),
+        (
+            f"Resampled ({metadata['processed_fs']:g} Hz; "
+            f"{metadata['resampling']['method']})"
+        ): (signals["resampled"], timeline["time_s"]),
+        (
+            f"Smoothed ({smoothing['method']}; {smoothing['window_samples']} samples; "
+            f"{smoothing['alignment']}; {smoothing['edge']} edges)"
+        ): (signals["smoothed"], timeline["time_s"]),
+        (
+            f"FIR ({fir['filter_type']}; {fir['cutoff_hz']:g} Hz; {fir['window']}; "
+            f"{fir['num_taps']} taps, {fir['coefficient_mode']}; "
+            f"gain {'normalized' if fir['scale'] else 'unscaled'}; "
+            f"delay {'compensated' if fir['delay_compensation'] else 'retained'}; {fir['edge']} edges)"
+        ): (signals["filtered"], timeline["time_s"]),
+    }
+
+
 def _validate_steps(steps):
     """
     Validate signal/time pairs before creating any figure.

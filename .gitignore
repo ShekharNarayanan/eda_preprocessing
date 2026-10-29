@@ -16,9 +16,11 @@ AGENTS.md
 Acqknowledge/
 input/**
 segmented_data/**
+preprocessed_data/**
 output/**
 
 # keep gitkeep files
 !output/.gitkeep
 !input/.gitkeep
 !segmented_data/.gitkeep
+!preprocessed_data/.gitkeep

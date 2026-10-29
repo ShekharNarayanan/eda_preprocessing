@@ -23,6 +23,8 @@ A Python pipeline for cleaning and segmenting physiological data recorded during
   - [5.2 Install dependencies](#52-install-dependencies)
   - [5.3 Run the pipeline](#53-run-the-pipeline)
 - [6. Signal preprocessing](#6-signal-preprocessing)
+  - [6.1 Run preprocessing](#61-run-preprocessing)
+  - [6.2 Preview a participant](#62-preview-a-participant)
 
 ---
 
@@ -46,7 +48,7 @@ The end goal of this project is to analyze the EDA and ECG signals condition by 
 ├── config.yaml                      Pipeline parameters (paths, sampling rate, etc.)
 ├── run_segmentation.py              Step 1: raw .acq files to labelled parquet
 ├── inspect_baseline_duration.py     Step 2: check the baseline period per participant
-├── preprocessing_charts.py          Export overlays of EDA processing steps
+├── run_preprocessing.py             Step 3: preprocess EDA, save recordings, and preview steps
 └── src/
     ├── common/                      Used by more than one stage
     │   ├── file_utils.py            Finding, naming, reading and writing files
@@ -70,7 +72,7 @@ Scripts at the top level are the ones you run. Everything under `src/` is import
 
 - **`run_segmentation.py`** reads every raw `.acq` recording, collapses the 8 pin columns into a single `trigger` column, labels the pre-experiment period as baseline, and writes one parquet file per participant. It also writes a cross-participant Excel report.
 - **`inspect_baseline_duration.py`** reads the segmented parquet files and reports how much baseline each recording contains, both as a table and as a timeline plot. Run this after `run_segmentation.py`.
-- **`preprocessing_charts.py`** reads one segmented recording, applies the shared `PREPROCESSING` settings, and exports a superimposed view of original EDA and each preprocessing step. See section 6 for configuration and usage.
+- **`run_preprocessing.py`** reads segmented recordings, applies the shared `PREPROCESSING` settings to EDA, and saves the processed recordings with their trigger labels and other channels. Use `--preview_for_participant` to process one participant and display and export graphs of each preprocessing step. See section 6 for usage.
 
 **Modules in `src/common/`**
 
@@ -78,7 +80,7 @@ Scripts at the top level are the ones you run. Everything under `src/` is import
 - **`trial_boundaries.py`** finds the start and end of every contiguous block in the recording, whether that block is a trial, a baseline period, or an unknown pin combination. It also finds where the first trial begins, which is what the baseline label depends on.
 - **`report_utils.py`** reads the cross-participant Excel report back into dataframes, adds a participant's rows to it, and writes it out again. It is what lets a run segment only the participants that are not in the report yet, without losing the rows of the ones that are.
 - **`baseline_plot_utils.py`** converts a table of periods into timeline bars and draws one row per participant, splitting across several figures when there are too many to fit on one.
-- **`signal_plot_utils.py`** superimposes named signal steps using each step's recording-time mapping and returns a figure with a clear legend.
+- **`signal_plot_utils.py`** draws preprocessing overlays and linked panels using each step's recording-time mapping, with legends and display-only zooms.
 
 **Modules in `src/segmentation/`**
 
@@ -90,13 +92,7 @@ These modules all need the 8 pin columns or the trigger map, both of which only 
 
 **`src/preprocessing/`**
 
-`signal_preprocessing.py` validates a signal and provides resampling, moving
-mean/median smoothing, and FIR filtering functions. Each function processes the
-complete supplied signal. Resampling returns its original recording positions
-alongside the new signal; smoothing and filtering preserve the sample index.
-`preprocess_signal` runs these steps in order and retains the raw, resampled,
-smoothed, and filtered signals. See [section 6](#6-signal-preprocessing) for usage
-and configuration.
+`signal_preprocessing.py` provides validation, resampling, moving mean/median smoothing, and FIR filtering for the complete supplied signal. It also builds a processed recording with filtered EDA, trigger labels, and other channels on the new sampling grid. See [section 6](#6-signal-preprocessing) for usage.
 
 ### 2.3 Configuration
 
@@ -105,12 +101,13 @@ All pipeline parameters live in `config.yaml`:
 ```yaml
 INPUT_DIR: 'input'                    # folder with raw .acq files
 SEGMENTED_DIR: 'segmented_data'       # folder where cleaned parquet files go
+PREPROCESSED_DIR: 'preprocessed_data' # folder where preprocessed parquet files go
 OUTPUT_DIR: 'output'                  # folder for diagnostic tables and figures
 
 SAMPLING_RATE: 2000                   # Hz
 
-ignore_participants: ["222", "226"]
-no_eda: ["138"]
+ignore_participants: ["222", "226"]   # exclude these participants from preprocessing
+no_eda: ["138"]                      # exclude recordings without usable EDA
 
 TRIGGER_COLS:                         # the 8 parallel port pin columns
   - OT_Only
@@ -122,14 +119,14 @@ TRIGGER_COLS:                         # the 8 parallel port pin columns
   - PM
   - Lure
 
-PREPROCESSING:                       # shared signal-processing settings
-    EDA_COLUMN: "EDA - EDA, Y, PPGED-R"
+PREPROCESSING:                       # settings used by run_preprocessing.py
+    EDA_COLUMN: "EDA - EDA, Y, PPGED-R" # name of the EDA channel to process
     TARGET_SAMPLING_RATE: 1000        # Hz, for the initial resampling step
-    RESAMPLING_METHOD: "linear"
+    RESAMPLING_METHOD: "linear"      # linear, padding (sample to the left), or cubic_spline
     SMOOTHING_WINDOW_SAMPLES: 100     # samples at the target rate (0.1 s at 1000 Hz)
-    SMOOTHING_METHOD: "median"
-    SMOOTHING_ALIGNMENT: "centered"
-    SMOOTHING_EDGE: "shrink"
+    SMOOTHING_METHOD: "median"       # moving mean or median
+    SMOOTHING_ALIGNMENT: "centered"  # centered or trailing window
+    SMOOTHING_EDGE: "shrink"         # shrink the window or repeat endpoints with nearest
     FIR_FILTER_TYPE: "lowpass"       # lowpass or highpass
     FIR_CUTOFF_HZ: 1.0               # Hz, between 0 and half the target rate
     FIR_WINDOW: "hamming"            # hamming, hann, blackman, or boxcar
@@ -140,19 +137,23 @@ PREPROCESSING:                       # shared signal-processing settings
     FIR_DELAY_COMPENSATION: true     # remove the filter's group delay
     FIR_EDGE: "reflect"              # reflect, nearest, or zero
 
-# These settings do not affect segmentation or preprocessing charts.
+PREPROCESSING_CHARTS:                # display settings used only for participant previews
+    ZOOM_WINDOWS_MIN: [[0.0, 0.5]]    # [start, end] pairs in recording minutes; [] for overview only
+
+# These settings are currently unused.
 EDA_DOWNSAMPLE: 100                   # target sampling rate (Hz)
 SCR_DETECTION_THRESHOLD: 0.03         # SCR detection threshold (microsiemens)
 
 ACQKNOWLEDGE_REFERENCE_DIR: 'Acqknowledge'  # local fixtures for optional tests
 ```
 
-`PREPROCESSING` controls the signal transformations: channel selection,
-resampling, smoothing, and FIR filtering. `preprocessing_charts.py` reads these
-settings and passes them to the processing functions.
+Run scripts from the repository root so configured relative paths resolve to the intended data folders. Keep `PREPROCESSED_DIR` separate from `SEGMENTED_DIR`; the preprocessing script rejects identical input and output directories.
 
-`PREPROCESSING.TARGET_SAMPLING_RATE` sets the resampling rate; `EDA_DOWNSAMPLE`
-does not override it. The scripts do not apply `ignore_participants` or `no_eda`.
+`PREPROCESSING` controls EDA channel selection, resampling, smoothing, and FIR filtering, applied in that order. `SAMPLING_RATE` describes the input recordings; `PREPROCESSING.TARGET_SAMPLING_RATE` sets the processed rate and the rate used for smoothing and FIR settings. `EDA_DOWNSAMPLE` does not override it.
+
+`FIR_COEFFICIENT_MODE: "optimized"` estimates the number of filter coefficients using `FIR_OPTIMIZED_FACTOR * TARGET_SAMPLING_RATE / FIR_CUTOFF_HZ`, rounded up to an odd count of at least 3. Use `"fixed"` with `FIR_NUM_TAPS` to set an odd count of at least 3 yourself. `FIR_SCALE` normalizes gain at zero frequency for lowpass or half the target rate for highpass, and `FIR_DELAY_COMPENSATION` removes the filter delay. `FIR_EDGE` controls endpoint padding: mirrored samples (`reflect`), repeated endpoints (`nearest`), or zeros (`zero`).
+
+`run_preprocessing.py` skips IDs in either `ignore_participants` or `no_eda`, including when a preview is requested. Keep IDs as strings: `"112"` excludes all sessions of participant 112, while `"112_2"` excludes only that session. These exclusions and the `PREPROCESSING` settings do not affect segmentation or baseline inspection.
 
 ## 3. Data segmentation
 
@@ -324,7 +325,7 @@ cd eda_preprocessing
 
 ### 5.2 Install dependencies
 
-This project uses [uv](https://docs.astral.sh/uv/) for environment and dependency management.
+This project uses Python 3.12, selected by `.python-version`, and [uv](https://docs.astral.sh/uv/) for environment and dependency management.
 
 ```bash
 uv sync --locked
@@ -344,7 +345,7 @@ Main dependencies:
 
 ### 5.3 Run the pipeline
 
-The two scripts run in order. The second reads what the first wrote.
+Segment the raw recordings first, inspect their baselines, then preprocess the segmented EDA. Run all commands from the repository root.
 
 **Step 1: segment the data**
 
@@ -364,69 +365,53 @@ uv run python -m inspect_baseline_duration
 
 This reads the segmented parquet files and writes the baseline table and timeline to `OUTPUT_DIR`.
 
-## 6. Signal preprocessing
+**Step 3: preprocess EDA**
 
-Signal preprocessing uses settings loaded from `config.yaml`. The shared
-`PREPROCESSING` section controls the EDA column, resampling, smoothing, and FIR
-filtering, applied in that order. The smoothing window is measured in samples
-after resampling, so 100 samples at 1000 Hz cover 0.1 seconds. FIR settings also
-use this target sampling rate.
-
-### Resampling
-
-Resampling anchors the new grid at the first supplied sample. With `N` input
-samples, it returns `floor((N - 1) * target_fs / fs) + 1` samples, stopping at
-the last grid point at or before the final input sample. It does not stretch
-the time axis, extrapolate, or apply an anti-alias filter. At 2000 → 1000 Hz,
-five input samples yield original positions `[0, 2, 4]`; six also yield
-`[0, 2, 4]`. Interpolation choices are `linear`, `padding` (sample to the left),
-and `cubic_spline` (natural endpoints). At a changed rate, the signal index is
-an output sample counter; `timeline.source_sample` holds its original recording
-positions, including fractional positions and nonzero trial origins.
-`timeline.time_s` is recording time in seconds. At the same rate, the original
-index is preserved. Empty inputs retain the output schema.
-
-### Smoothing
-
-Smoothing accepts `mean` or `median`, `centered` or `trailing` alignment, and
-`shrink` or `nearest` edges. A centered width of 100 uses positions `i - 50`
-through `i + 49`, inclusive. Median smoothing averages the central pair for
-even numbers of values. Shrinking edges use only available samples; nearest
-edges repeat the endpoint to fill the window. The output keeps the input
-length, index, name, and units. Both operations return new signals and reject
-missing/infinite values or broken sample timelines.
-
-### FIR filtering
-
-FIR (finite impulse response) filtering runs after smoothing. The default is a
-1 Hz lowpass filter with a Hamming window, normalized gain, delay compensation,
-and reflected edges. The cutoff is the half-amplitude (-6 dB) frequency.
-
-`FIR_COEFFICIENT_MODE` selects `optimized` or `fixed`. Optimized mode uses
-`ceil(FIR_OPTIMIZED_FACTOR * TARGET_SAMPLING_RATE / FIR_CUTOFF_HZ)` coefficients,
-with a minimum of 3 and any even count increased to odd. Fixed mode uses
-`FIR_NUM_TAPS`. `FIR_SCALE` normalizes gain to 1 at zero frequency for lowpass
-or half the target sampling rate for highpass.
-
-Delay compensation removes `(num_taps - 1) / 2` samples of group delay in a
-single pass. Turning it off retains that delay on the same sample grid. Edge
-handling mirrors samples (`reflect`), repeats endpoints (`nearest`), or pads
-with zeros (`zero`). The output keeps the input length, index, name, and units.
-
-### Inspect preprocessed signals
-
-Run the dedicated inspection script from the repository root:
-
-```powershell
-uv run python -m preprocessing_charts --participant 149
+```bash
+uv run python -m run_preprocessing
 ```
 
-This reads the EDA channel from `clean_149.parquet` under `SEGMENTED_DIR` and
-processes the complete supplied recording. It shows the original, resampled,
-smoothed, and FIR-filtered signals as an overlay and as separate panels. The
-plot windows support zoom and pan; add `--no-show` to save the figures without
-opening them.
+This processes all eligible segmented recordings and saves them to `PREPROCESSED_DIR`. To process and preview one participant first, use the commands in [section 6](#6-signal-preprocessing).
 
-Figures are exported to `OUTPUT_DIR/preprocessing_charts/`, including
-`preprocessing_149.png` and `preprocessing_panels_149.png`. Processed signals
-remain in memory. Chart appearance is handled by `src/common/signal_plot_utils.py`.
+## 6. Signal preprocessing
+
+### 6.1 Run preprocessing
+
+```powershell
+uv run python -m run_preprocessing
+```
+
+The script reads `clean_<participant_id>.parquet` files from `SEGMENTED_DIR` and processes one recording at a time, skipping participants listed in `ignore_participants` or `no_eda`. Each input must contain the configured `PREPROCESSING.EDA_COLUMN` and a `trigger` column. EDA is resampled, smoothed, and FIR-filtered continuously across the complete recording, including baseline and trial boundaries. No anti-alias filter is applied before resampling.
+
+Results are saved as `PREPROCESSED_DIR/clean_<participant_id>.parquet`, with the EDA column replaced by the filtered signal. The `trigger` column and other channels, including ECG, are retained on the processed grid using the original sample at or immediately before each output position. Trigger labels keep their meanings from [section 3.2](#32-the-trigger-column), though spans shorter than one output interval may disappear when reducing the sampling rate. Use `PREPROCESSING.TARGET_SAMPLING_RATE` when interpreting the processed sample index or calculating durations.
+
+Running without preview arguments saves recordings without generating figures. Every eligible recording is processed on each run, replacing any existing output file for that participant.
+
+### 6.2 Preview a participant
+
+To process one participant and inspect the effect of each step:
+
+```powershell
+uv run python -m run_preprocessing --preview_for_participant 149
+```
+
+The participant ID must match a segmented filename exactly: `149` selects `clean_149.parquet`, and `112_2` selects `clean_112_2.parquet`. Preview mode also saves the preprocessed parquet file, replacing it if it already exists.
+
+Two interactive figures show the original, resampled, smoothed, and FIR-filtered EDA: one overlay and one view with separate panels sharing the time axis. Legends identify the processing settings, time is shown in recording minutes, and the plot windows support zoom and pan.
+
+The script exports overview PNGs and the zooms configured in `PREPROCESSING_CHARTS.ZOOM_WINDOWS_MIN` to `OUTPUT_DIR/preprocessing_charts/` before opening the figures. The default zoom is the first half-minute, `[[0.0, 0.5]]`; set it to `[]` to export only overviews. Override the configured zooms with `--zoom START_MIN END_MIN`, repeating the option for several spans:
+
+```powershell
+uv run python -m run_preprocessing --preview_for_participant 149 --zoom 0 0.5 --zoom 10 10.5
+```
+
+Zooms affect the displayed range only; preprocessing always uses the complete recording. `--zoom` is used only when `--preview_for_participant` is supplied. For this example, the exported files are:
+
+| File | Contents |
+|------|----------|
+| `preprocessing_149.png` | Overview with all steps superimposed |
+| `preprocessing_panels_149.png` | Overview with separate linked panels |
+| `preprocessing_149_zoom_1.png`, `preprocessing_panels_149_zoom_1.png` | Views of minutes 0–0.5 |
+| `preprocessing_149_zoom_2.png`, `preprocessing_panels_149_zoom_2.png` | Views of minutes 10–10.5 |
+
+Close the plot windows when finished to let the command exit.

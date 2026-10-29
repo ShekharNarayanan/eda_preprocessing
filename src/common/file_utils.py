@@ -165,7 +165,7 @@ def read_segmented_file(path, columns=None):
 
 def save_segmented_file(clean_df, segmented_dir, participant_id):
     """
-    Write one participant's cleaned dataframe to the segmented folder.
+    Write one participant's labelled dataframe to the given data folder.
 
     The naming pattern 'clean_<participant_id>.parquet' is defined here and
     read back by get_participant_id_from_parquet, so the two stay together.
@@ -173,7 +173,7 @@ def save_segmented_file(clean_df, segmented_dir, participant_id):
     Parameters
     ----------
     clean_df       : the cleaned dataframe to save
-    segmented_dir  : str or Path to the folder to write into
+    segmented_dir  : str or Path to the segmented or preprocessed output folder
     participant_id : str, used to build the file name
 
     Returns

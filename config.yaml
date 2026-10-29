@@ -3,6 +3,7 @@
 # Data paths
 INPUT_DIR  : 'input'
 SEGMENTED_DIR: 'segmented_data'
+PREPROCESSED_DIR: 'preprocessed_data'
 OUTPUT_DIR : 'output'
 
 # Recording
@@ -50,7 +51,7 @@ PREPROCESSING:
     FIR_DELAY_COMPENSATION: true
     FIR_EDGE: "reflect"
 
-# Display only; the complete supplied signal is processed before plotting.
+# Display only, used with --preview_for_participant; the complete signal is processed.
 PREPROCESSING_CHARTS:
     ZOOM_WINDOWS_MIN: [[0.0, 0.5]]
 
