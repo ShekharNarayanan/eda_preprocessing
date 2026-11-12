@@ -15,7 +15,8 @@ def get_trial_run_lengths(mask):
     trial_started = mask & ~mask.shift(1, fill_value=False)
     trial_id      = trial_started.cumsum()
     trial_lengths = mask.groupby(trial_id).sum()
-    return trial_lengths
+    # Samples before the first trial form a zero-length group, not a trial.
+    return trial_lengths[trial_lengths > 0]
 
 
 

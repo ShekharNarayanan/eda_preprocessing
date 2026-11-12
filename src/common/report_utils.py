@@ -129,7 +129,7 @@ def read_report(report_path):
 
     # Reading with sheet_name=None gets every sheet in one pass. A report that
     # cannot be read is treated as though it were not there, so that a damaged
-    # file means every participant is prepared again rather than the run
+    # file means every participant is segmented again rather than the run
     # stopping before anything can be done about it.
     try:
         existing_sheets = pd.read_excel(report_path, sheet_name=None, index_col=0)
@@ -158,7 +158,7 @@ def read_report(report_path):
     return sheets
 
 
-def get_prepared_participant_ids(sheets):
+def get_segmented_participant_ids(sheets):
     """
     Return the participant IDs already present in the report.
 
@@ -187,7 +187,7 @@ def add_participant_rows(sheets, new_rows):
     Add one participant's rows to the tables read from the report.
 
     If that participant already has rows in a sheet, they are dropped first,
-    so preparing a participant again replaces their old numbers instead of
+    so segmenting a participant again replaces their old numbers instead of
     leaving two sets behind.
 
     Parameters
