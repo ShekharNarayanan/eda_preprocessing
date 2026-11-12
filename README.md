@@ -25,6 +25,9 @@ A Python pipeline for cleaning and segmenting physiological data recorded during
 - [6. Signal preprocessing](#6-signal-preprocessing)
   - [6.1 Run preprocessing](#61-run-preprocessing)
   - [6.2 Preview a participant](#62-preview-a-participant)
+- [7. Phasic EDA and SCR analysis](#7-phasic-eda-and-scr-analysis)
+  - [7.1 Run analysis](#71-run-analysis)
+  - [7.2 Preview a participant](#72-preview-a-participant)
 
 ---
 
@@ -49,6 +52,7 @@ The end goal of this project is to analyze the EDA and ECG signals condition by 
 ├── run_segmentation.py              Step 1: raw .acq files to labelled parquet
 ├── inspect_baseline_duration.py     Step 2: check the baseline period per participant
 ├── run_preprocessing.py             Step 3: preprocess EDA, save recordings, and preview steps
+├── run_analysis.py                  Step 4: derive phasic EDA, detect SCRs, and preview decisions
 └── src/
     ├── common/                      Used by more than one stage
     │   ├── file_utils.py            Finding, naming, reading and writing files
@@ -61,7 +65,8 @@ The end goal of this project is to analyze the EDA and ECG signals condition by 
     │   ├── build_trigger_data.py    Turning 8 pin columns into one trigger column
     │   └── summarize_data.py        Read-only summaries for the reports
     └── preprocessing/               Signal processing
-        └── signal_preprocessing.py  Validation, resampling, smoothing, and FIR filtering
+        ├── signal_preprocessing.py  Validation, resampling, smoothing, and FIR filtering
+        └── signal_analysis.py       Median baseline removal and SCR detection
 ```
 
 Scripts at the top level are the ones you run. Everything under `src/` is imported by them, grouped by which stage uses it. Modules in `common/` are used by more than one stage, so they do not sit under any single one.
@@ -73,6 +78,7 @@ Scripts at the top level are the ones you run. Everything under `src/` is import
 - **`run_segmentation.py`** reads every raw `.acq` recording, collapses the 8 pin columns into a single `trigger` column, labels the pre-experiment period as baseline, and writes one parquet file per participant. It also writes a cross-participant Excel report.
 - **`inspect_baseline_duration.py`** reads the segmented parquet files and reports how much baseline each recording contains, both as a table and as a timeline plot. Run this after `run_segmentation.py`.
 - **`run_preprocessing.py`** reads segmented recordings, applies the shared `PREPROCESSING` settings to EDA, and saves the processed recordings with their trigger labels and other channels. Use `--preview_for_participant` to process one participant and display and export graphs of each preprocessing step. See section 6 for usage.
+- **`run_analysis.py`** reads preprocessed EDA, derives baseline and phasic signals, and saves accepted and rejected SCR candidates. Use `--preview_for_participant` to display and export the signal steps and detection decisions. See section 7 for usage.
 
 **Modules in `src/common/`**
 
@@ -140,6 +146,17 @@ PREPROCESSING:                       # settings used by run_preprocessing.py
 PREPROCESSING_CHARTS:                # display settings used only for participant previews
     ZOOM_WINDOWS_MIN: [[0.0, 0.5]]    # [start, end] pairs in recording minutes; [] for overview only
 
+ANALYSIS:                            # settings used by run_analysis.py
+    PHASIC_METHOD: "median_baseline" # subtract a moving median baseline
+    PHASIC_BASELINE_WINDOW_S: 5.0     # seconds; width * processed rate must be a whole sample count
+    PHASIC_BASELINE_ALIGNMENT: "centered" # centered or trailing window
+    PHASIC_BASELINE_EDGE: "shrink"    # shrink the window or repeat endpoints with nearest
+    SCR_THRESHOLD_US: 0.01           # onset requires phasic EDA strictly above this value in µS
+    SCR_REJECTION_PCT: 10.0          # reject below this percentage of the complete candidates' phasic max
+
+ANALYSIS_CHARTS:                     # display settings used by run_analysis.py
+    ZOOM_WINDOWS_MIN: [[0.0, 0.5]]    # same recording-minute convention
+
 # These settings are currently unused.
 EDA_DOWNSAMPLE: 100                   # target sampling rate (Hz)
 SCR_DETECTION_THRESHOLD: 0.03         # SCR detection threshold (microsiemens)
@@ -152,6 +169,8 @@ Run scripts from the repository root so configured relative paths resolve to the
 `PREPROCESSING` controls EDA channel selection, resampling, smoothing, and FIR filtering, applied in that order. `SAMPLING_RATE` describes the input recordings; `PREPROCESSING.TARGET_SAMPLING_RATE` sets the processed rate and the rate used for smoothing and FIR settings. `EDA_DOWNSAMPLE` does not override it.
 
 `FIR_COEFFICIENT_MODE: "optimized"` estimates the number of filter coefficients using `FIR_OPTIMIZED_FACTOR * TARGET_SAMPLING_RATE / FIR_CUTOFF_HZ`, rounded up to an odd count of at least 3. Use `"fixed"` with `FIR_NUM_TAPS` to set an odd count of at least 3 yourself. `FIR_SCALE` normalizes gain at zero frequency for lowpass or half the target rate for highpass, and `FIR_DELAY_COMPENSATION` removes the filter delay. `FIR_EDGE` controls endpoint padding: mirrored samples (`reflect`), repeated endpoints (`nearest`), or zeros (`zero`).
+
+`run_analysis.py` uses the `PHASIC_*`, `SCR_THRESHOLD_US`, and `SCR_REJECTION_PCT` settings under `ANALYSIS`. It reads the EDA column name and fallback sampling rate from `PREPROCESSING`. The separate top-level `SCR_DETECTION_THRESHOLD: 0.03` remains unused. Median baseline removal with a 5-second window is an explicit calibration choice; the workflow's method code, window units, and exact boundary behavior still require AcqKnowledge confirmation.
 
 `run_preprocessing.py` skips IDs in either `ignore_participants` or `no_eda`, including when a preview is requested. Keep IDs as strings: `"112"` excludes all sessions of participant 112, while `"112_2"` excludes only that session. These exclusions and the `PREPROCESSING` settings do not affect segmentation or baseline inspection.
 
@@ -373,6 +392,14 @@ uv run python -m run_preprocessing
 
 This processes all eligible segmented recordings and saves them to `PREPROCESSED_DIR`. To process and preview one participant first, use the commands in [section 6](#6-signal-preprocessing).
 
+**Step 4: derive phasic EDA and detect SCRs**
+
+```bash
+uv run python -m run_analysis
+```
+
+This analyzes eligible preprocessed recordings and saves SCR tables under `OUTPUT_DIR/analysis/`. See [section 7](#7-phasic-eda-and-scr-analysis) for previews and output details.
+
 ## 6. Signal preprocessing
 
 ### 6.1 Run preprocessing
@@ -415,3 +442,23 @@ Zooms affect the displayed range only; preprocessing always uses the complete re
 | `preprocessing_149_zoom_2.png`, `preprocessing_panels_149_zoom_2.png` | Views of minutes 10–10.5 |
 
 Close the plot windows when finished to let the command exit.
+
+## 7. Phasic EDA and SCR analysis
+
+### 7.1 Run analysis
+
+```powershell
+uv run python -m run_analysis
+```
+
+The script reads the configured EDA column from each `clean_<participant_id>.parquet` in `PREPROCESSED_DIR`, one participant at a time, skipping IDs in `ignore_participants` or `no_eda`. It analyzes the complete saved filtered signal. Baseline and phasic waveforms remain in memory. The parquet sampling-rate and source-origin attributes preserve recording times after resampling; files without these attributes use `PREPROCESSING.TARGET_SAMPLING_RATE` and their sample index.
+
+Each run replaces `OUTPUT_DIR/analysis/scr_<participant_id>.csv`. Columns are `participant_id`, `onset`, `peak`, `end`, `amplitude_us`, `phasic_peak_us`, `status`, `rejection_reason`, `onset_s`, `peak_s`, and `end_s`. Positions are integer samples on the preprocessed grid; `_s` columns contain exact recording seconds. Empty detections still save the column headers.
+
+SCR onset requires phasic EDA to rise strictly above `SCR_THRESHOLD_US`; the first return to zero or below ends the response. Relative rejection compares maximum phasic values across complete candidates in the supplied recording, accepting equality at the rejection level. Reported amplitude is filtered EDA at its maximum within the inclusive onset/end interval minus filtered EDA at onset. Responses starting above threshold or ending without a zero return are retained as rejected with an explicit reason; an unobserved end remains empty.
+
+### 7.2 Preview a participant
+
+```powershell
+uv run python -m run_analysis --preview_for_participant 149
+```
