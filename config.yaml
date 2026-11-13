@@ -1,19 +1,30 @@
-# config.py
+# config.yaml
 
-# Data paths
+# Data paths are relative to the working directory when they are not absolute.
+# Folder containing the raw Biopac .acq recordings read by run_segmentation.py.
 INPUT_DIR  : 'input'
+# Destination for clean_<participant_id>.parquet and report.xlsx; input to preprocessing.
 SEGMENTED_DIR: 'segmented_data'
+# Destination for filtered clean_<participant_id>.parquet recordings; input to SCR analysis.
 PREPROCESSED_DIR: 'preprocessed_data'
+# Destination for inspection summaries, SCR CSV tables, and diagnostic PNG figures.
 OUTPUT_DIR : 'output'
 
 # Recording
-SAMPLING_RATE : 2000  # Hz
+# Native recording sampling rate in Hz, used for segmentation timing and preprocessing input.
+# Preprocessed recordings use PREPROCESSING.TARGET_SAMPLING_RATE.
+SAMPLING_RATE : 2000
 
-# participants to ignore
+# Participant exclusions used by preprocessing and analysis; segmentation does not apply these lists.
+# General exclusions; keep IDs quoted as strings to preserve session suffixes.
+# A base ID excludes all sessions; an ID such as "112_2" excludes only that session.
 ignore_participants : ["222", "226"]
+# Participants with missing or unusable EDA, using the same participant/session matching rule.
 no_eda : ["138"]
 
 # Trigger columns
+# Exact names of the eight raw digital pin columns, normalized to 0/1 during segmentation.
+# These columns are matched to the codebooks and replaced with a single trigger column.
 TRIGGER_COLS : [
     "OT_Only",
     "OT_Type",
@@ -25,39 +36,57 @@ TRIGGER_COLS : [
     "Lure",
 ]
 
-# Reserved for later EDA downsampling and SCR detection; currently unused.
-EDA_DOWNSAMPLE          : 100   # target sampling rate after downsampling (Hz)
-# downsampling approach: https://www.researchgate.net/publication/228888313_Using_skin_conductance_in_judgment_and_decision_making_research
-SCR_DETECTION_THRESHOLD : 0.03 # micro siemens
+# Inactive parameters; current stages use the settings under PREPROCESSING and ANALYSIS.
+# Downsampling rate in Hz; active preprocessing uses PREPROCESSING.TARGET_SAMPLING_RATE.
+# c.f. https://www.researchgate.net/publication/228888313_Using_skin_conductance_in_judgment_and_decision_making_research
+EDA_DOWNSAMPLE          : 100
+# Detection threshold in µS; active SCR analysis uses ANALYSIS.SCR_THRESHOLD_US.
+SCR_DETECTION_THRESHOLD : 0.03
 
 # EDA preprocessing settings used by run_preprocessing.py.
-# These are explicit calibration choices; the AcqKnowledge option codes and
-# edge behavior remain unverified.
+# c.f. SciPy FIR filter definitions: https://docs.scipy.org/doc/scipy/reference/generated/scipy.signal.firwin.html
+# c.f. pandas moving windows: https://pandas.pydata.org/docs/reference/api/pandas.Series.rolling.html
 PREPROCESSING:
+    # Exact EDA column label in the recording; values must be in microsiemens (µS).
     EDA_COLUMN: "EDA - EDA, Y, PPGED-R"
+    # Output sampling rate in Hz, used for all subsequent smoothing and FIR filtering.
     TARGET_SAMPLING_RATE: 1000
+    # linear interpolates neighboring samples; padding takes the preceding sample; cubic_spline uses a natural spline.
+    # Resampling applies no anti-alias filter; the FIR filtering step follows resampling and smoothing.
     RESAMPLING_METHOD: "linear"
-    SMOOTHING_WINDOW_SAMPLES: 100  # samples at TARGET_SAMPLING_RATE
+    # Positive integer window width in samples at TARGET_SAMPLING_RATE; 100 samples at 1000 Hz is 0.1 s.
+    # Larger windows smooth more aggressively.
+    SMOOTHING_WINDOW_SAMPLES: 100
+    # median uses the moving median to limit the influence of isolated spikes; mean uses the arithmetic average.
+    # For an even window size, median averages the central pair of sorted values.
     SMOOTHING_METHOD: "median"
+    # centered uses samples on both sides; trailing uses the current sample and preceding samples.
+    # A centered 100-sample window includes i - 50 through i + 49.
     SMOOTHING_ALIGNMENT: "centered"
-    # At recording edges, shrink computes the median from available samples.
+    # At recording edges, shrink computes the configured mean or median from available samples.
     # nearest repeats endpoints to maintain the full smoothing window.
     SMOOTHING_EDGE: "shrink"
+    # lowpass retains slow signal components; highpass retains fast components.
     FIR_FILTER_TYPE: "lowpass"
+    # Filter cutoff in Hz at the half-amplitude point (-6 dB).
+    # Must be strictly between 0 and TARGET_SAMPLING_RATE / 2.
     FIR_CUTOFF_HZ: 1.0
-    FIR_WINDOW: "blackman"  # SciPy's standard Blackman window
+    # Symmetric coefficient window; supported choices are blackman, hamming, hann, and boxcar.
+    # blackman uses SciPy's standard Blackman window.
+    FIR_WINDOW: "blackman"
+    # optimized derives the coefficient count using FIR_OPTIMIZED_FACTOR; fixed uses FIR_NUM_TAPS.
     FIR_COEFFICIENT_MODE: "optimized"
     # Fixed mode: odd coefficient count >= 3 (AcqKnowledge's "Fixed at"); ignored in optimized mode.
     # More taps sharpen the transition but increase computation and uncompensated delay.
     FIR_NUM_TAPS: null
     # Count: ceil(factor * TARGET_SAMPLING_RATE / FIR_CUTOFF_HZ), increased to odd.
-    # Factor 4 follows BIOPAC's rule; larger factors sharpen the transition, smaller ones broaden it.
+    # Larger factors sharpen the transition; smaller factors broaden it.
     FIR_OPTIMIZED_FACTOR: 4.0
     # Normalize lowpass coefficients to preserve constant EDA levels.
     # false skips normalization and can change the overall amplitude.
     FIR_SCALE: true
-    # True removes FIR delay in one centered pass to preserve trigger alignment.
-    # false retains the delay.
+    # true removes FIR delay in one centered pass to preserve trigger alignment.
+    # false retains a delay of (coefficient count - 1) / 2 samples.
     FIR_DELAY_COMPENSATION: true
     # reflect mirrors samples; nearest repeats endpoints; zero supplies zeros.
     # Zero padding can pull the filtered signal toward zero at recording edges.
@@ -65,20 +94,37 @@ PREPROCESSING:
 
 # Display only, used with --preview_for_participant; the complete signal is processed.
 PREPROCESSING_CHARTS:
+    # Additional [start_min, end_min] views in recording minutes, saved as PNGs during participant preview.
+    # [] keeps only the full-recording overview; these ranges do not crop processing.
     ZOOM_WINDOWS_MIN: [[0.0, 0.5]]
 
 # Phasic/SCR analysis settings used by run_analysis.py.
-# Independent AcqKnowledge exports are still needed.
+# c.f. BIOPAC phasic EDA: https://www.biopac.com/knowledge-base/phasic-eda-issue/
+# c.f. BIOPAC SCR detection and EDA preferences (pp. 18, 21): https://www.biopac.com/wp-content/uploads/AcqKnowledge-Specialized.pdf
 ANALYSIS:
-    PHASIC_METHOD: "median_baseline"  # explicit choice; workflow method code is unverified
-    PHASIC_BASELINE_WINDOW_S: 5.0  # seconds; width * signal sampling rate must be a whole sample count
+    # AcqKnowledge's "Smoothing Baseline Removal": subtract a moving median baseline from filtered EDA.
+    PHASIC_METHOD: "median_baseline"
+    # Baseline estimation window in seconds; 5 s gives 5000 samples at 1000 Hz.
+    # Larger windows increase sensitivity; width * signal sampling rate must be a whole sample count.
+    PHASIC_BASELINE_WINDOW_S: 5.0
+    # centered uses samples before and after the current sample; trailing uses current and past samples.
+    # At 1000 Hz, the 5000-sample centered window includes i - 2500 through i + 2499.
+    # AcqKnowledge's EDA preferences do not specify window alignment.
     PHASIC_BASELINE_ALIGNMENT: "centered"
+    # shrink takes the median of available samples at recording edges; nearest repeats endpoints.
+    # This choice affects baseline and phasic values near the start and end of the recording.
+    # AcqKnowledge's EDA documentation does not specify edge handling.
     PHASIC_BASELINE_EDGE: "shrink"
-    SCR_THRESHOLD_US: 0.01  # phasic onset must be strictly above this level in µS
-    SCR_REJECTION_PCT: 10.0  # percentage of the maximum phasic value among complete candidates
+    # Detection level H in µS; onset occurs when phasic EDA crosses from <= H to > H.
+    SCR_THRESHOLD_US: 0.01
+    # Rejection percentage P; reject phasic peaks below P% of the complete-candidate maximum.
+    # 0 disables relative rejection; equality is accepted and incomplete candidates are excluded from the maximum.
+    SCR_REJECTION_PCT: 10.0
 
 # Display only, used by run_analysis.py --preview_for_participant.
 ANALYSIS_CHARTS:
+    # Additional [start_min, end_min] views in recording minutes, saved as PNGs during participant preview.
+    # [] keeps only the full-recording overview; these ranges do not crop SCR analysis.
     ZOOM_WINDOWS_MIN: [[0.0, 0.5]]
 
 # ECG parameters
