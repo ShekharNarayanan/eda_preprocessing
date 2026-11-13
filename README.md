@@ -426,13 +426,14 @@ The participant ID must match a segmented filename exactly: `149` selects `clean
 
 Two interactive figures show the original, resampled, smoothed, and FIR-filtered EDA: one overlay and one view with separate panels sharing the time axis. Legends identify the processing settings, time is shown in recording minutes, and the plot windows support zoom and pan.
 
-The script exports overview PNGs and the zooms configured in `PREPROCESSING_CHARTS.ZOOM_WINDOWS_MIN` to `OUTPUT_DIR/preprocessing_charts/` before opening the figures. The default zoom is the first half-minute, `[[0.0, 0.5]]`; set it to `[]` to export only overviews. Override the configured zooms with `--zoom START_MIN END_MIN`, repeating the option for several spans:
+The script exports overview PNGs and the zooms configured in `PREPROCESSING_CHARTS.ZOOM_WINDOWS_MIN` to `OUTPUT_DIR/preprocessing_charts/` before opening the figures. The default zoom is the first half-minute, `[[0.0, 0.5]]`; set it to `[]` to export only overviews. To export several spans, list them in `config.yaml`:
 
-```powershell
-uv run python -m run_preprocessing --preview_for_participant 149 --zoom 0 0.5 --zoom 10 10.5
+```yaml
+PREPROCESSING_CHARTS:
+    ZOOM_WINDOWS_MIN: [[0.0, 0.5], [10.0, 10.5]]
 ```
 
-Zooms affect the displayed range only; preprocessing always uses the complete recording. `--zoom` is used only when `--preview_for_participant` is supplied. For this example, the exported files are:
+Zooms affect the displayed range only; preprocessing always uses the complete recording. Charts are exported only when `--preview_for_participant` is supplied. For participant `149` with these settings, the exported files are:
 
 | File | Contents |
 |------|----------|

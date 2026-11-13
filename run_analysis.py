@@ -29,10 +29,6 @@ if __name__ == "__main__":
         "--preview_for_participant", metavar="PARTICIPANT_ID",
         help="Analyze only this participant or session, preview the overlay, and export PNGs.",
     )
-    parser.add_argument(
-        "--zoom", nargs=2, type=float, action="append", metavar=("START_MIN", "END_MIN"),
-        help="Export a display-only zoom in recording minutes; repeat for several spans. Overrides config zooms.",
-    )
     args = parser.parse_args()
 
     # Keep configured relative data paths relative to the working directory.
@@ -44,7 +40,7 @@ if __name__ == "__main__":
     analysis_settings = config["ANALYSIS"]
     chart_settings = config.get("ANALYSIS_CHARTS", {})
     charts_enabled = args.preview_for_participant is not None
-    zoom_windows_min = args.zoom if args.zoom is not None else chart_settings.get("ZOOM_WINDOWS_MIN", [])
+    zoom_windows_min = chart_settings.get("ZOOM_WINDOWS_MIN", [])
     analysis_dir = Path(config["OUTPUT_DIR"]) / "analysis"
     chart_dir = Path(config["OUTPUT_DIR"]) / "analysis_charts"
     paths = file_utils.get_segmented_files(config["PREPROCESSED_DIR"])

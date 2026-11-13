@@ -27,10 +27,6 @@ if __name__ == "__main__":
         "--preview_for_participant", metavar="PARTICIPANT_ID",
         help="Process only this participant or session, preview the graphs, and export PNGs.",
     )
-    parser.add_argument(
-        "--zoom", nargs=2, type=float, action="append", metavar=("START_MIN", "END_MIN"),
-        help="Export a display-only zoom in recording minutes; repeat for several spans. Overrides config zooms.",
-    )
     args = parser.parse_args()
 
     # Keep configured relative data paths relative to the working directory.
@@ -43,7 +39,7 @@ if __name__ == "__main__":
     target_fs = settings["TARGET_SAMPLING_RATE"]
     chart_settings = config.get("PREPROCESSING_CHARTS", {})
     charts_enabled = args.preview_for_participant is not None
-    zoom_windows_min = args.zoom if args.zoom is not None else chart_settings.get("ZOOM_WINDOWS_MIN", [])
+    zoom_windows_min = chart_settings.get("ZOOM_WINDOWS_MIN", [])
     chart_dir = Path(config["OUTPUT_DIR"]) / "preprocessing_charts"
     preprocessed_dir = Path(config["PREPROCESSED_DIR"])
     if preprocessed_dir.resolve() == Path(config["SEGMENTED_DIR"]).resolve():
