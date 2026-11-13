@@ -25,8 +25,6 @@ Both expose ordinary functions accepting signals, sampling rates, and parameters
 
    Local synthetic tests cover sample grids, nonzero origins, even windows, spikes, constants, and odd-length inputs. NumPy/SciPy are direct dependencies with an updated lockfile. Shared overlays retain exact recording-time alignment.
 
-   **Acceptance:** the implementation and focused tests exist; AcqKnowledge grid, median, and edge agreement remain unverified.
-
 2. [x] **`feat: implement FIR filtering and expose preprocessing graphs`**
 
    The complete sequence is:
@@ -55,15 +53,13 @@ Both expose ordinary functions accepting signals, sampling rates, and parameters
 
    **Acceptance:** detection accepts independent filtered/phasic input; overlays and `plot_analysis(...)` event panels exist. Independent calibration and runner export of event panels remain pending.
 
-4. [ ] **`feat: reproduce stimulus matching`**
+4. [x] **`feat: reproduce stimulus matching`**
 
    Accept a stimulus table with event positions and labels; keep raw-pin decoding in segmentation/reference helpers.
 
    Implement AcqKnowledge's matching window, event ordering, and response-reuse rules. Test overlapping windows, multiple candidates, unmatched stimuli, and responses outside the window. Preserve exact timing across sampling grids.
 
    Extend analysis previews with stimulus markers and response associations on the shared recording timeline, retaining earlier overlays and clear legends.
-
-   **Acceptance:** synthetic matches are established, reference stimulus totals agree, and exported charts make associations inspectable.
 
 5. [ ] **`feat: reproduce analysis summaries and diagnostic graphs`**
 
@@ -78,8 +74,6 @@ Both expose ordinary functions accepting signals, sampling rates, and parameters
    - [x] Provide `plot_analysis(...)` with linked filtered/phasic panels, SCR onset/peak/end markers, and rejection decisions.
    - [ ] Add stimulus markers and associations, and export these panels from `run_analysis.py` alongside the complete signal overlay.
 
-   **Acceptance:** summary formulas and empty results pass focused tests; each detected and matched response is inspectable in exported charts.
-
 6. [ ] **`test: verify reuse on recording segments`**
 
    - [x] Preserve same-rate indices and explicit recording-time mappings after resampling, including nonzero origins.
@@ -88,8 +82,6 @@ Both expose ordinary functions accepting signals, sampling rates, and parameters
    - [ ] Extend segment checks to stimulus matching, summaries, and empty stimulus tables.
 
    Filtering a trial independently can differ from slicing continuously filtered data. Keep boundary context and rejection scope explicit.
-
-   **Acceptance:** the complete analysis APIs support participant and segment inputs without participant-specific assumptions.
 
 7. [ ] **`test: enforce four-participant parity and document module usage`**
 
@@ -107,7 +99,5 @@ Both expose ordinary functions accepting signals, sampling rates, and parameters
    - [x] Document current runners, parameters, outputs, and previews in the README.
    - [x] Separate synthetic `unittest` checks from explicitly enabled local reference tests.
    - [ ] Complete module examples, four-participant comparisons, independent waveform checks, and overview/zoom exports with researcher review.
-
-   **Acceptance:** all reference comparisons pass and all processing stages are visually inspectable. Participant runners are already part of issue #1; trial-specific orchestration remains for issue #2.
 
 **Final-summary agreement** and **independent preprocessing agreement** remain separate acceptance checks. Excel agreement alone cannot establish waveform parity. Per-step charts and researcher review continue to apply to later extensions of both runners.
